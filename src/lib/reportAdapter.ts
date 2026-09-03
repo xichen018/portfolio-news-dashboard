@@ -1,0 +1,22 @@
+import type { CatalystCategory, CatalystEvent, NewsItem } from '@/types'
+
+type Source = { source_id:string; provider:string; publisher:string; url:string; published_at?:string; retrieved_at:string }
+type ReportNews = { headline:string; published_at:string; summary_zh:string; impact:'positive'|'negative'|'neutral'; rationale_zh:string; source_ids:string[]; outside_window:boolean }
+type Analysis = { instrument_id:string; investment_view_zh:string; levels_and_actions_zh?:string; source_ids:string[] }
+type NewsCandidate = ReportNews & { instrument_id?:string; symbol?:string }
+type Task = { task_id:string; title_zh:string; portfolio_implications_zh?:string; instruments:Array<{instrument_id:string;symbol:string;news:ReportNews[]}>; section_news:ReportNews[]; upcoming_events:Array<{event_at:string;confirmation_status:string;title_zh:string;why_it_matters_zh:string;transmission_variable_zh?:string;source_ids:string[]}>; investment_analyses:Analysis[]; sources:Source[] }
+export type ReportPayload = { run_context:{run_id:string;scheduled_for:string};tasks:Task[] }
+
+const categoryFor=(text:string):CatalystCategory=>/利率|美元|流动性|资金|融资|降息|加息/.test(text)?'资金流向与资金成本':/估值|风险|波动|盈利|财报/.test(text)?'市场估值与潜在风险':'宏观信息'
+const sentiment=(impact:ReportNews['impact']):NewsItem['sentiment']=>impact==='positive'?'利好':impact==='negative'?'风险':'中性'
+
+export function adaptReport(payload:ReportPayload):{events:CatalystEvent[];news:NewsItem[]}{
+  const events:CatalystEvent[]=[];const news:NewsItem[]=[];const seenEvents=new Set<string>();const seenNews=new Set<string>()
+  for(const task of payload.tasks){
+    const sources=new Map(task.sources.map((source)=>[source.source_id,source]));const analyses=new Map(task.investment_analyses.map((item)=>[item.instrument_id,item]))
+    for(const event of task.upcoming_events||[]){const source=event.source_ids.map((id)=>sources.get(id)).find(Boolean);const key=`${event.event_at}|${event.title_zh}`;if(event.confirmation_status!=='confirmed'||!source||seenEvents.has(key))continue;seenEvents.add(key);const body=[event.transmission_variable_zh,event.why_it_matters_zh].filter(Boolean).join(' ');events.push({id:`report-event-${payload.run_context.run_id}-${events.length}`,date:event.event_at.slice(0,10),type:'宏观',category:categoryFor(event.title_zh+body),title:event.title_zh,note:event.why_it_matters_zh,sourceUrl:source.url,filterReason:`已确认事件；来源：${source.publisher}`,aiAdvice:task.portfolio_implications_zh||'现有证据不足以形成可靠建议',evidenceGap:task.portfolio_implications_zh?undefined:'待补数据'})}
+    const candidates:NewsCandidate[]=[...(task.section_news||[]),...(task.instruments||[]).flatMap((instrument)=>(instrument.news||[]).map((item)=>({...item,instrument_id:instrument.instrument_id,symbol:instrument.symbol})))]
+    for(const item of candidates){const source=item.source_ids.map((id)=>sources.get(id)).find(Boolean);const key=`${item.published_at}|${item.headline}`;if(item.outside_window||!source||seenNews.has(key))continue;seenNews.add(key);const analysis=item.instrument_id?analyses.get(item.instrument_id):undefined;news.push({id:`report-news-${payload.run_context.run_id}-${news.length}`,ticker:item.symbol||task.title_zh,title:item.headline,summary:item.summary_zh,source:source.publisher,url:source.url,kind:/SEC|10-[KQ]|8-K|监管文件/i.test(item.headline+source.provider)?'SEC披露':'重大新闻',sentiment:sentiment(item.impact),filterReason:item.rationale_zh,aiAdvice:analysis?[analysis.investment_view_zh,analysis.levels_and_actions_zh].filter(Boolean).join(' '):(task.portfolio_implications_zh||undefined),ts:new Date(item.published_at).getTime()})}
+  }
+  return {events,news}
+}

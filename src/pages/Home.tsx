@@ -10,6 +10,7 @@ import DisciplinePanel from '@/sections/DisciplinePanel'
 import { LS_KEYS, useLocalStorage } from '@/hooks/useLocalStorage'
 import { seedEvents, seedHoldings, seedIdeas, seedNews, seedTrades, seedTwitter, seedXDigest, X_HANDLES } from '@/data/seed'
 import { countdownLabel, currentMonth, uid } from '@/lib/format'
+import { useDailyReport } from '@/hooks/useDailyReport'
 import type { CatalystEvent, Holding, Idea, NewsItem, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
 
 export default function Home() {
@@ -20,6 +21,7 @@ export default function Home() {
   const [xDigest, setXDigest] = useLocalStorage<XDigestItem[]>(LS_KEYS.xDigest, seedXDigest)
   const [ideas, setIdeas] = useLocalStorage<Idea[]>(LS_KEYS.ideas, seedIdeas)
   const [trades, setTrades] = useLocalStorage<TradeCounter>(LS_KEYS.trades, seedTrades)
+  const report = useDailyReport()
 
   // 跨月自动重置交易额度
   useEffect(() => {
@@ -43,6 +45,16 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    setHoldings((previous) => previous.filter((item) => !item.demo))
+    setIdeas((previous) => previous.filter((item) => !['美国靶向药突破 → 关注创新药板块', '铜库存持续下降，关注铜矿股'].includes(item.title)))
+    setXDigest((previous) => previous.filter((item) => item.title !== '等待接入 X 数据源'))
+    setEvents((previous) => [...previous.filter((item) => !item.demo && !item.id.startsWith('report-event-')), ...report.events])
+    setNews((previous) => [...previous.filter((item) => !item.demo && !item.id.startsWith('report-news-')), ...report.news])
+    // Report data is replaced as one verified snapshot whenever the fetch completes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report.runId])
+
   const nextEvent = [...events]
     .filter((e) => countdownLabel(e.date).tone !== 'past')
     .sort((a, b) => a.date.localeCompare(b.date))[0]
@@ -55,7 +67,7 @@ export default function Home() {
 
   return (
     <div className="scanlines min-h-screen bg-[var(--bg0)]">
-      <Header tradesUsed={trades.used} tradesLimit={trades.limit} />
+      <Header tradesUsed={trades.used} tradesLimit={trades.limit} dataStatus={report.status} updatedAt={report.updatedAt} />
 
       <div className="pt-12">
         <TickerBanner items={marqueeItems.length > 0 ? marqueeItems : ['暂无数据']} />
@@ -94,7 +106,7 @@ export default function Home() {
           <span className="font-mono2 text-[9.5px] t4">
             数据仅保存在当前浏览器，可用右上角按钮导出备份或导入恢复
           </span>
-          <span className="font-mono2 text-[9.5px] t4">新闻与观点为手动归档，非实时行情</span>
+          <span className="font-mono2 text-[9.5px] t4">日报数据：{report.status === 'ready' ? `已核验 · ${report.updatedAt}` : report.status === 'loading' ? '读取中' : '待补数据'}</span>
           <span className="flex-1" />
           <span className="font-mono2 text-[9.5px] t4">仅供个人研究记录，不构成投资建议</span>
         </footer>

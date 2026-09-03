@@ -6,9 +6,11 @@ import { Download, RotateCcw, Upload } from 'lucide-react'
 interface HeaderProps {
   tradesUsed: number
   tradesLimit: number
+  dataStatus: 'loading' | 'ready' | 'error'
+  updatedAt?: string
 }
 
-export default function Header({ tradesUsed, tradesLimit }: HeaderProps) {
+export default function Header({ tradesUsed, tradesLimit, dataStatus, updatedAt }: HeaderProps) {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -29,8 +31,8 @@ export default function Header({ tradesUsed, tradesLimit }: HeaderProps) {
         <h1 className="text-[13px] font-semibold tracking-wide whitespace-nowrap">每日投资驾驶舱</h1>
         <span className="font-mono2 text-[9px] tracking-[0.22em] t4 uppercase hidden sm:inline">Daily Cockpit</span>
       </div>
-      <span className="tag border-[var(--line)] t3 flex-none" title="当前为浏览器本地数据，尚未接入实时数据源">
-        LOCAL
+      <span className={`tag flex-none ${dataStatus === 'ready' ? 'border-[rgba(52,211,153,.45)] text-[var(--mint)]' : 'border-[var(--line)] t3'}`} title={updatedAt ? `数据生成时间 ${updatedAt}` : '正在读取日报数据'}>
+        {dataStatus === 'ready' ? 'VERIFIED' : dataStatus === 'loading' ? 'LOADING' : 'NO DATA'}
       </span>
 
       <span className="flex-1" />

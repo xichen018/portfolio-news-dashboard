@@ -1,11 +1,13 @@
 import type { CatalystEvent, Holding, Idea, NewsItem, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
-import { addDays, currentMonth, hoursAgo, uid } from '@/lib/format'
+import { currentMonth, uid } from '@/lib/format'
 
 /**
  * 示例数据：日期与时间均相对“今天”生成，保证倒计时和时间线始终是活的。
  * 用户在页面内的增删改会存入浏览器 localStorage，覆盖这里的默认值。
  */
-export const seedHoldings = (): Holding[] => [
+export const seedHoldings = (): Holding[] => []
+/* Legacy examples retained only for migration/type history; production seeds are empty.
+const legacySeedHoldings = (): Holding[] => [
   {
     id: uid(),
     ticker: 'NVDA',
@@ -65,8 +67,11 @@ export const seedHoldings = (): Holding[] => [
     demo: true,
   },
 ]
+*/
 
-export const seedEvents = (): CatalystEvent[] => [
+export const seedEvents = (): CatalystEvent[] => []
+/* Legacy examples retained only for migration/type history; production seeds are empty.
+const legacySeedEvents = (): CatalystEvent[] => [
   {
     id: uid(),
     date: addDays(1),
@@ -126,8 +131,11 @@ export const seedEvents = (): CatalystEvent[] => [
     demo: true,
   },
 ]
+*/
 
-export const seedNews = (): NewsItem[] => [
+export const seedNews = (): NewsItem[] => []
+/* Legacy examples retained only for migration/type history; production seeds are empty.
+const legacySeedNews = (): NewsItem[] => [
   {
     id: uid(),
     ticker: 'NVDA',
@@ -175,6 +183,7 @@ export const seedNews = (): NewsItem[] => [
     demo: true,
   },
 ]
+*/
 
 export const X_HANDLES = ['LizAnnSonders', 'jimcramer', 'chao_bitcoin29', 'qinbafrank', 'MoneyPrinter0x', 'labubu_trader', 'daidaibtc', 'XtineFang', 'ParadisLabs', 'au_xbt', 'Web3Feng', 'cyrilxuq', 'aleabitoreddit', 'xingpt', 'Bitfatty', 'Imlaomao', '0xVeryBigOrange', 'shirleyusy', 'keyahayek', 'WilliamLu126', 'Joylou1209', 'mingyue00001', 'LeePima', '0xLoki_Zeng', 'Michael_Liu93']
 
@@ -182,15 +191,11 @@ export const seedTwitter = (): TwitterAccount[] => X_HANDLES.map((handle) => ({
   id: uid(), handle, name: handle, focus: '待分类', note: '',
 }))
 
-export const seedXDigest = (): XDigestItem[] => [
-  {
-    id: uid(), category: '市场观点', title: '等待接入 X 数据源',
-    summary: '已配置账户名单与 30 小时窗口。取得原始推文前不生成市场归纳。',
-    handles: [], ts: Date.now(),
-  },
-]
+export const seedXDigest = (): XDigestItem[] => []
 
-export const seedIdeas = (): Idea[] => [
+export const seedIdeas = (): Idea[] => []
+/* Legacy examples retained only for migration/type history; production seeds are empty.
+const legacySeedIdeas = (): Idea[] => [
   {
     id: uid(),
     title: '美国靶向药突破 → 关注创新药板块',
@@ -209,5 +214,6 @@ export const seedIdeas = (): Idea[] => [
     status: 'aging',
   },
 ]
+*/
 
-export const seedTrades = (): TradeCounter => ({ used: 1, limit: 4, month: currentMonth() })
+export const seedTrades = (): TradeCounter => ({ used: 0, limit: 4, month: currentMonth() })

@@ -25,3 +25,5 @@ AI 只能分析过滤后、带来源的事实。输出必须区分事实、解�
 2. 使用 OpenAI Responses API 严格结构化输出，按板块分别请求，不使用自由文本 fallback。
 3. 增加服务端持久化与认证；目前浏览器 localStorage 不适合跨设备或多人使用。
 4. 定时运行、失败诊断和原始证据保存在服务端日志，不在读者界面暴露异常堆栈。
+
+生产环境通过 `deploy/publish-latest-report.sh` 在日报任务成功结束后原子发布最新的 `report_input.json`。前端读取 `/portfolio/data/latest.json`，不直接访问运行目录。
