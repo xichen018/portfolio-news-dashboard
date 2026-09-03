@@ -9,7 +9,7 @@ import IdeasPanel from '@/sections/IdeasPanel'
 import DisciplinePanel from '@/sections/DisciplinePanel'
 import { LS_KEYS, useLocalStorage } from '@/hooks/useLocalStorage'
 import { seedEvents, seedHoldings, seedIdeas, seedNews, seedTrades, seedTwitter, seedXDigest, X_HANDLES } from '@/data/seed'
-import { countdownLabel, currentMonth } from '@/lib/format'
+import { countdownLabel, currentMonth, uid } from '@/lib/format'
 import type { CatalystEvent, Holding, Idea, NewsItem, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
 
 export default function Home() {
@@ -35,7 +35,7 @@ export default function Home() {
       const retained = previous.filter((account) => !retiredDemoHandles.has(account.handle.toLowerCase()))
       const existing = new Set(retained.map((account) => account.handle.toLowerCase()))
       const missing = X_HANDLES.filter((handle) => !existing.has(handle.toLowerCase())).map((handle) => ({
-        id: crypto.randomUUID(), handle, name: handle, focus: '待分类', note: '',
+        id: uid(), handle, name: handle, focus: '待分类', note: '',
       }))
       return retained.length !== previous.length || missing.length ? [...retained, ...missing] : previous
     })
