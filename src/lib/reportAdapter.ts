@@ -7,6 +7,7 @@ type NewsCandidate = ReportNews & { instrument_id?:string; symbol?:string }
 type MacroObservation = { metric_id:string; label:string; value:string|number; unit:string; period:string; actual?:string|number; consensus?:string|number; prior?:string|number; source_ids:string[] }
 type Task = { task_id:string; title_zh:string; market_regime_zh?:string; portfolio_implications_zh?:string; instruments:Array<{instrument_id:string;symbol:string;news:ReportNews[]}>; section_news:ReportNews[]; upcoming_events:Array<{event_at:string;confirmation_status:string;title_zh:string;why_it_matters_zh:string;transmission_variable_zh?:string;source_ids:string[]}>; macro_observations?:MacroObservation[]; investment_analyses:Analysis[]; sources:Source[] }
 export type ReportPayload = { run_context:{run_id:string;scheduled_for:string};tasks:Task[] }
+export type MonthlyCalendarPayload = { generated_at:string; timezone:string; month:string; events:Array<{id:string;title_zh:string;event_at:string;original_timezone:string;original_time_label:string;publisher:string;source_url:string}> }
 
 const sentiment=(impact:ReportNews['impact']):NewsItem['sentiment']=>impact==='positive'?'利好':impact==='negative'?'风险':'中性'
 const macroCategory=(metricId:string):CatalystCategory=>metricId==='vixcls'?'市场估值与潜在风险':/dff|dgs10|dtwexbgs|fomc/.test(metricId)?'资金流向与资金成本':'宏观信息'
@@ -22,4 +23,8 @@ export function adaptReport(payload:ReportPayload):{events:CatalystEvent[];news:
     for(const item of candidates){const source=item.source_ids.map((id)=>sources.get(id)).find(Boolean);const key=`${item.published_at}|${item.headline}`;if(item.outside_window||!source||seenNews.has(key))continue;seenNews.add(key);const analysis=item.instrument_id?analyses.get(item.instrument_id):undefined;news.push({id:`report-news-${payload.run_context.run_id}-${news.length}`,ticker:item.symbol||task.title_zh,title:item.headline,summary:item.summary_zh,source:source.publisher,url:source.url,kind:/SEC|10-[KQ]|8-K|监管文件/i.test(item.headline+source.provider)?'SEC披露':'重大新闻',sentiment:sentiment(item.impact),filterReason:item.rationale_zh,aiAdvice:analysis?[analysis.investment_view_zh,analysis.levels_and_actions_zh].filter(Boolean).join(' '):(task.portfolio_implications_zh||undefined),ts:new Date(item.published_at).getTime()})}
   }
   return {events,news}
+}
+
+export function adaptMonthlyCalendar(payload:MonthlyCalendarPayload):CatalystEvent[]{
+  return payload.events.map((item)=>({id:`calendar-${item.id}`,date:item.event_at.slice(0,10),type:'宏观',category:'宏观信息',title:item.title_zh,note:`香港时间 ${item.event_at.slice(11,16)}；原始时间 ${item.original_time_label}`,sourceUrl:item.source_url,filterReason:`本月重要官方发布；来源：${item.publisher}`,evidenceGap:'事件尚未发生，实际值与市场反应待发布后补充'}))
 }

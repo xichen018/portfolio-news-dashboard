@@ -39,7 +39,7 @@ export default function CatalystPanel({ events, setEvents }: Props) {
     setShowForm(false)
   }
 
-  return <Panel label="市场监测 · 过滤后信息" count={events.length} actions={
+  return <Panel label="市场监测 · 本月日历与数据" count={events.length} actions={
     <button className="icon-btn" title="添加过滤结果" aria-label="添加过滤结果" onClick={() => setShowForm(!showForm)}><Plus size={13} /></button>
   }>
     <div className="grid grid-cols-3 gap-1 mb-2" role="tablist">

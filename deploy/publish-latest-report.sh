@@ -12,3 +12,4 @@ fi
 install -d -o www-data -g www-data -m 0755 "$PUBLIC_DIR"
 install -o www-data -g www-data -m 0644 "$latest_report" "$PUBLIC_DIR/latest.json.tmp"
 mv "$PUBLIC_DIR/latest.json.tmp" "$PUBLIC_DIR/latest.json"
+/usr/local/bin/build-portfolio-economic-calendar "$PUBLIC_DIR/monthly-calendar.json" || true

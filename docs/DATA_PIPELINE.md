@@ -27,3 +27,5 @@ AI 只能分析过滤后、带来源的事实。输出必须区分事实、解�
 4. 定时运行、失败诊断和原始证据保存在服务端日志，不在读者界面暴露异常堆栈。
 
 生产环境通过 `deploy/publish-latest-report.sh` 在日报任务成功结束后原子发布最新的 `report_input.json`。前端读取 `/portfolio/data/latest.json`，不直接访问运行目录。
+
+本月重要财经日历由 `deploy/build-economic-calendar.py` 从 BLS 官方 iCalendar 与 BEA 官方发布日程生成，筛选非农、CPI、PPI、JOLTS、GDP、个人收入支出/PCE和国际贸易。FOMC 日期沿用 Federal Reserve 官方会议日历。所有时间转换为香港时间，并保留原始美国东部时间标签。
