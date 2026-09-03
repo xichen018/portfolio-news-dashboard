@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg0: #050810;
+  --bg1: #0c1220;
+  --bg2: #111a2b;
+  --line: #1a2540;
+  --line-soft: rgba(26, 37, 64, 0.6);
+  --txt: #e8eefc;
+  --txt72: rgba(232, 238, 252, 0.72);
+  --txt48: rgba(232, 238, 252, 0.48);
+  --txt32: rgba(232, 238, 252, 0.32);
+  --cyan: #22d3ee;
+  --mint: #34d399;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --magenta: #e879f9;
+  --term: #00ff41;
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+  html,
+  body {
+    background: var(--bg0);
+    color: var(--txt);
+    font-family: 'IBM Plex Sans', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: rgba(34, 211, 238, 0.25);
+  }
+}
+
+/* ---------- typography helpers ---------- */
+.font-mono2 {
+  font-family: 'IBM Plex Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.font-cond {
+  font-family: 'IBM Plex Sans Condensed', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+.panel-label {
+  font-family: 'IBM Plex Sans Condensed', 'PingFang SC', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt48);
+}
+.t1 { color: var(--txt); }
+.t2 { color: var(--txt72); }
+.t3 { color: var(--txt48); }
+.t4 { color: var(--txt32); }
+
+/* ---------- panels ---------- */
+.panel {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.panel-body {
+  padding: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ---------- status dot ---------- */
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  flex: none;
+}
+.dot-pulse {
+  animation: dotpulse 1.5s ease-in-out infinite;
+}
+@keyframes dotpulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0, 255, 65, 0.5); }
+  50% { opacity: 0.55; box-shadow: 0 0 0 4px rgba(0, 255, 65, 0); }
+}
+
+/* ---------- ticker marquee ---------- */
+.marquee {
+  overflow: hidden;
+  white-space: nowrap;
+}
+.marquee-inner {
+  display: inline-flex;
+  animation: marquee 46s linear infinite;
+  will-change: transform;
+}
+.marquee:hover .marquee-inner {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* ---------- scanline texture ---------- */
+.scanlines::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(255, 255, 255, 0.012) 3px
+  );
+}
+
+/* ---------- scrollbar ---------- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #26355c; }
+
+/* ---------- shared bits ---------- */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'IBM Plex Mono', 'PingFang SC', monospace;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--txt48);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  padding: 3px;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.icon-btn:hover {
+  color: var(--cyan);
+  border-color: var(--line);
+  background: var(--bg2);
+}
+.input2 {
+  width: 100%;
+  background: var(--bg0);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--txt);
+  font-size: 12px;
+  padding: 6px 8px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input2::placeholder { color: var(--txt32); }
+.input2:focus {
+  border-color: rgba(34, 211, 238, 0.6);
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.15);
+}
+select.input2 option { background: var(--bg1); }
+.empty-state {
+  border: 1px dashed var(--line);
+  border-radius: 2px;
+  padding: 14px 12px;
+  color: var(--txt48);
+  font-size: 12px;
+  text-align: center;
+}
+.link-cyan {
+  color: var(--cyan);
+  transition: opacity 0.15s ease;
+}
+.link-cyan:hover { opacity: 0.75; }
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-inner { animation: none; }
+  .dot-pulse { animation: none; }
+}

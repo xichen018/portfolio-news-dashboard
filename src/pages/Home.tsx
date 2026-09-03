@@ -1,0 +1,89 @@
+import { useEffect } from 'react'
+import Header from '@/sections/Header'
+import TickerBanner from '@/sections/TickerBanner'
+import HoldingsPanel from '@/sections/HoldingsPanel'
+import CatalystPanel from '@/sections/CatalystPanel'
+import NewsPanel from '@/sections/NewsPanel'
+import TwitterPanel from '@/sections/TwitterPanel'
+import IdeasPanel from '@/sections/IdeasPanel'
+import DisciplinePanel from '@/sections/DisciplinePanel'
+import { LS_KEYS, useLocalStorage } from '@/hooks/useLocalStorage'
+import { seedEvents, seedHoldings, seedIdeas, seedNews, seedTrades, seedTwitter } from '@/data/seed'
+import { countdownLabel, currentMonth } from '@/lib/format'
+import type { CatalystEvent, Holding, Idea, NewsItem, TradeCounter, TwitterAccount } from '@/types'
+
+export default function Home() {
+  const [holdings, setHoldings] = useLocalStorage<Holding[]>(LS_KEYS.holdings, seedHoldings)
+  const [events, setEvents] = useLocalStorage<CatalystEvent[]>(LS_KEYS.events, seedEvents)
+  const [news, setNews] = useLocalStorage<NewsItem[]>(LS_KEYS.news, seedNews)
+  const [twitter, setTwitter] = useLocalStorage<TwitterAccount[]>(LS_KEYS.twitter, seedTwitter)
+  const [ideas, setIdeas] = useLocalStorage<Idea[]>(LS_KEYS.ideas, seedIdeas)
+  const [trades, setTrades] = useLocalStorage<TradeCounter>(LS_KEYS.trades, seedTrades)
+
+  // 跨月自动重置交易额度
+  useEffect(() => {
+    if (trades.month !== currentMonth()) {
+      setTrades((prev) => ({ ...prev, used: 0, month: currentMonth() }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trades.month])
+
+  const nextEvent = [...events]
+    .filter((e) => countdownLabel(e.date).tone !== 'past')
+    .sort((a, b) => a.date.localeCompare(b.date))[0]
+
+  const marqueeItems = [
+    ...holdings.map((h) => `${h.ticker} ${h.direction === '多' ? '多' : h.direction === '空' ? '空' : '空2x'} · ${h.weight}%`),
+    ...news.slice(0, 4).map((n) => `${n.ticker} · ${n.title}`),
+    ...(nextEvent ? [`下一催化剂 · ${nextEvent.title} · ${countdownLabel(nextEvent.date).label}`] : []),
+  ]
+
+  return (
+    <div className="scanlines min-h-screen bg-[var(--bg0)]">
+      <Header tradesUsed={trades.used} tradesLimit={trades.limit} />
+
+      <div className="pt-12">
+        <TickerBanner items={marqueeItems.length > 0 ? marqueeItems : ['暂无数据']} />
+
+        <main className="grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 lg:h-[calc(100vh-80px)]">
+          {/* 左栏：持仓 */}
+          <div className="lg:col-span-3 min-h-[420px] lg:min-h-0">
+            <HoldingsPanel holdings={holdings} setHoldings={setHoldings} />
+          </div>
+
+          {/* 中栏：日历 + 新闻 */}
+          <div className="lg:col-span-6 flex flex-col gap-2 min-h-0">
+            <div className="flex-none max-h-[46%] min-h-[260px] flex">
+              <CatalystPanel events={events} setEvents={setEvents} />
+            </div>
+            <div className="flex-1 min-h-[320px] flex">
+              <NewsPanel news={news} setNews={setNews} />
+            </div>
+          </div>
+
+          {/* 右栏：X 关注 + 陈化池 + 纪律 */}
+          <div className="lg:col-span-3 flex flex-col gap-2 min-h-0">
+            <div className="flex-1 min-h-[260px] flex">
+              <TwitterPanel accounts={twitter} setAccounts={setTwitter} />
+            </div>
+            <div className="flex-none max-h-[34%] min-h-[200px] flex">
+              <IdeasPanel ideas={ideas} setIdeas={setIdeas} />
+            </div>
+            <div className="flex-none flex">
+              <DisciplinePanel trades={trades} setTrades={setTrades} />
+            </div>
+          </div>
+        </main>
+
+        <footer className="border-t border-[var(--line)] px-3 py-2 flex flex-wrap gap-x-4 gap-y-1 items-center">
+          <span className="font-mono2 text-[9.5px] t4">
+            数据仅保存在当前浏览器，可用右上角按钮导出备份或导入恢复
+          </span>
+          <span className="font-mono2 text-[9.5px] t4">新闻与观点为手动归档，非实时行情</span>
+          <span className="flex-1" />
+          <span className="font-mono2 text-[9.5px] t4">仅供个人研究记录，不构成投资建议</span>
+        </footer>
+      </div>
+    </div>
+  )
+}
