@@ -31,11 +31,13 @@ export default function Home() {
 
   useEffect(() => {
     setTwitter((previous) => {
-      const existing = new Set(previous.map((account) => account.handle.toLowerCase()))
+      const retiredDemoHandles = new Set(['elerianm', 'fundstrat', 'woonomic'])
+      const retained = previous.filter((account) => !retiredDemoHandles.has(account.handle.toLowerCase()))
+      const existing = new Set(retained.map((account) => account.handle.toLowerCase()))
       const missing = X_HANDLES.filter((handle) => !existing.has(handle.toLowerCase())).map((handle) => ({
         id: crypto.randomUUID(), handle, name: handle, focus: '待分类', note: '',
       }))
-      return missing.length ? [...previous, ...missing] : previous
+      return retained.length !== previous.length || missing.length ? [...retained, ...missing] : previous
     })
     // Only merge the configured watchlist when this application version loads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
