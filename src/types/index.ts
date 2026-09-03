@@ -89,3 +89,24 @@ export interface TradeCounter {
   limit: number
   month: string // YYYY-MM，跨月自动重置
 }
+
+export interface PMDecision {
+  id: string
+  taskId: string
+  ticker: string
+  view: string
+  evidence: string[]
+  pricing?: string
+  variant?: string
+  catalysts?: string
+  actions?: string
+  portfolioImplication?: string
+  sourceUrls: string[]
+}
+
+export interface ReportChange {
+  id: string
+  ticker: string
+  kind: '新增判断' | '判断变化'
+  summary: string
+}

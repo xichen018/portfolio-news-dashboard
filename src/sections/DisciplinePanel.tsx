@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { ClipboardCheck, X } from 'lucide-react'
 import type { TradeCounter } from '@/types'
 import Panel from './Panel'
 
@@ -15,6 +17,8 @@ interface Props {
 }
 
 export default function DisciplinePanel({ trades, setTrades }: Props) {
+  const [showCheck,setShowCheck]=useState(false)
+  const [checks,setChecks]=useState<boolean[]>(()=>RULES.map(()=>false))
   const pct = Math.min(100, (trades.used / trades.limit) * 100)
   const exhausted = trades.used >= trades.limit
 
@@ -22,7 +26,12 @@ export default function DisciplinePanel({ trades, setTrades }: Props) {
     setTrades((prev) => ({ ...prev, used: Math.max(0, Math.min(prev.limit, prev.used + d)) }))
 
   return (
-    <Panel label="交易纪律">
+    <Panel label="交易纪律" actions={<button className="icon-btn" title="交易前检查" onClick={()=>setShowCheck(!showCheck)}>{showCheck?<X size={13}/>:<ClipboardCheck size={13}/>}</button>}>
+      {showCheck&&<div className="mb-2 border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2">
+        <div className="font-mono2 text-[9px] text-[var(--cyan)] mb-1.5">交易前硬检查 · {checks.filter(Boolean).length}/{RULES.length}</div>
+        {RULES.map((rule,index)=><label key={rule} className="flex gap-2 py-1 text-[10.5px] t2 cursor-pointer"><input type="checkbox" checked={checks[index]} onChange={(event)=>setChecks((previous)=>previous.map((value,i)=>i===index?event.target.checked:value))}/><span>{rule}</span></label>)}
+        <div className={`mt-1.5 border-l-2 pl-2 text-[10.5px] ${checks.every(Boolean)?'border-[var(--mint)] text-[var(--mint)]':'border-[var(--amber)] text-[var(--amber)]'}`}>{checks.every(Boolean)?'纪律条件已确认；仍需按日报中的触发与失效条件执行。':'检查未完成，不建议提交交易。'}</div>
+      </div>}
       <div className="border border-[var(--line)] rounded-sm bg-[var(--bg2)] px-3 py-2.5">
         <div className="flex items-end justify-between">
           <span className="font-mono2 text-[10px] t4 uppercase tracking-[0.15em]">本月交易额度</span>

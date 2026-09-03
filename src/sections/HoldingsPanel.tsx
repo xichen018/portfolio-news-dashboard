@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Direction, Holding } from '@/types'
+import type { Direction, Holding, PMDecision } from '@/types'
 import { uid } from '@/lib/format'
 import Panel from './Panel'
 
@@ -24,10 +24,11 @@ const emptyForm = {
 
 interface Props {
   holdings: Holding[]
+  decisions: PMDecision[]
   setHoldings: (fn: (prev: Holding[]) => Holding[]) => void
 }
 
-export default function HoldingsPanel({ holdings, setHoldings }: Props) {
+export default function HoldingsPanel({ holdings, decisions, setHoldings }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -129,7 +130,9 @@ export default function HoldingsPanel({ holdings, setHoldings }: Props) {
 
       <div className="space-y-2">
         {holdings.length === 0 && <div className="empty-state">暂无持仓——点击右上角 + 添加第一笔</div>}
-        {holdings.map((h) => (
+        {holdings.map((h) => {
+          const decision=decisions.find((item)=>item.ticker.toUpperCase()===h.ticker.toUpperCase())
+          return (
           <article key={h.id} className="border border-[var(--line)] rounded-sm bg-[var(--bg2)] p-2.5 hover:border-[#26355c] transition-colors">
             <div className="flex items-center gap-2">
               <span className="font-mono2 text-[13px] font-semibold t1">{h.ticker}</span>
@@ -167,6 +170,17 @@ export default function HoldingsPanel({ holdings, setHoldings }: Props) {
                 {h.stop && <div className="text-[var(--red)]">止损 · {h.stop}</div>}
               </div>
             )}
+            <div className="mt-2 border-t border-[var(--line-soft)] pt-2">
+              <div className="font-mono2 text-[9px] text-[var(--cyan)]">AI 决策框架 · 已核验日报</div>
+              {!decision?<div className="mt-1 text-[10.5px] t4">待补数据</div>:<div className="mt-1.5 space-y-1.5 text-[10.5px] t2 leading-relaxed">
+                <p>{decision.view}</p>
+                {decision.evidence.length>0&&<p><span className="t4">证据：</span>{decision.evidence.join('；')}</p>}
+                {decision.pricing&&<p><span className="t4">定价：</span>{decision.pricing}</p>}
+                {decision.variant&&<p><span className="t4">分歧：</span>{decision.variant}</p>}
+                {decision.catalysts&&<p><span className="t4">催化：</span>{decision.catalysts}</p>}
+                {decision.actions&&<p className="border-l-2 border-[var(--cyan)] pl-2"><span className="text-[var(--cyan)]">条件与动作：</span>{decision.actions}</p>}
+              </div>}
+            </div>
             <div className="mt-2 pt-1.5 border-t border-[var(--line-soft)] flex items-center gap-1">
               <a className="link-cyan font-mono2 text-[10px]" href={`https://www.google.com/search?q=${encodeURIComponent(h.ticker + ' ' + h.name + ' 新闻')}&tbm=nws`} target="_blank" rel="noreferrer">
                 新闻 ↗
@@ -197,7 +211,7 @@ export default function HoldingsPanel({ holdings, setHoldings }: Props) {
               )}
             </div>
           </article>
-        ))}
+        )})}
       </div>
     </Panel>
   )

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Header from '@/sections/Header'
 import TickerBanner from '@/sections/TickerBanner'
 import HoldingsPanel from '@/sections/HoldingsPanel'
@@ -7,11 +7,12 @@ import NewsPanel from '@/sections/NewsPanel'
 import TwitterPanel from '@/sections/TwitterPanel'
 import IdeasPanel from '@/sections/IdeasPanel'
 import DisciplinePanel from '@/sections/DisciplinePanel'
+import PortfolioRiskPanel from '@/sections/PortfolioRiskPanel'
 import { LS_KEYS, useLocalStorage } from '@/hooks/useLocalStorage'
 import { seedEvents, seedHoldings, seedIdeas, seedNews, seedTrades, seedTwitter, seedXDigest, X_HANDLES } from '@/data/seed'
 import { countdownLabel, currentMonth, uid } from '@/lib/format'
 import { useDailyReport } from '@/hooks/useDailyReport'
-import type { CatalystEvent, Holding, Idea, NewsItem, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
+import type { CatalystEvent, Holding, Idea, NewsItem, ReportChange, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
 
 export default function Home() {
   const [holdings, setHoldings] = useLocalStorage<Holding[]>(LS_KEYS.holdings, seedHoldings)
@@ -21,6 +22,8 @@ export default function Home() {
   const [xDigest, setXDigest] = useLocalStorage<XDigestItem[]>(LS_KEYS.xDigest, seedXDigest)
   const [ideas, setIdeas] = useLocalStorage<Idea[]>(LS_KEYS.ideas, seedIdeas)
   const [trades, setTrades] = useLocalStorage<TradeCounter>(LS_KEYS.trades, seedTrades)
+  const [decisionSnapshot, setDecisionSnapshot] = useLocalStorage<{runId:string;views:Record<string,string>}>(LS_KEYS.decisionSnapshot,()=>({runId:'',views:{}}))
+  const [reportChanges,setReportChanges]=useState<ReportChange[]>([])
   const report = useDailyReport()
 
   // 跨月自动重置交易额度
@@ -57,6 +60,21 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [report.runId])
 
+  useEffect(()=>{
+    if(!report.runId||report.runId===decisionSnapshot.runId)return
+    const nextViews=Object.fromEntries(report.decisions.map((item)=>[item.ticker,item.view]))
+    const changes=report.decisions.reduce<ReportChange[]>((result,item)=>{
+      const prior=decisionSnapshot.views[item.ticker]
+      if(!prior&&decisionSnapshot.runId)result.push({id:`${report.runId}-${item.ticker}`,ticker:item.ticker,kind:'新增判断',summary:item.view})
+      else if(prior&&prior!==item.view)result.push({id:`${report.runId}-${item.ticker}`,ticker:item.ticker,kind:'判断变化',summary:item.view})
+      return result
+    },[])
+    setReportChanges(changes)
+    setDecisionSnapshot(()=>({runId:report.runId!,views:nextViews}))
+    // Compare once for each newly published report.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[report.runId])
+
   const nextEvent = [...events]
     .filter((e) => countdownLabel(e.date).tone !== 'past')
     .sort((a, b) => a.date.localeCompare(b.date))[0]
@@ -76,8 +94,9 @@ export default function Home() {
 
         <main className="grid grid-cols-1 lg:grid-cols-12 gap-2 p-2 lg:h-[calc(100vh-80px)]">
           {/* 左栏：持仓 */}
-          <div className="lg:col-span-3 min-h-[420px] lg:min-h-0">
-            <HoldingsPanel holdings={holdings} setHoldings={setHoldings} />
+          <div className="lg:col-span-3 min-h-[420px] lg:min-h-0 flex flex-col gap-2">
+            <div className="flex-none"><PortfolioRiskPanel holdings={holdings} changes={reportChanges} portfolioImplications={report.decisions.map((item)=>item.portfolioImplication||'')} /></div>
+            <div className="flex-1 min-h-[300px] flex"><HoldingsPanel holdings={holdings} decisions={report.decisions} setHoldings={setHoldings} /></div>
           </div>
 
           {/* 中栏：日历 + 新闻 */}

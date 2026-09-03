@@ -30,6 +30,7 @@ export const LS_KEYS = {
   xDigest: 'cockpit.x-digest.v1',
   ideas: 'cockpit.ideas.v1',
   trades: 'cockpit.trades.v1',
+  decisionSnapshot: 'cockpit.decision-snapshot.v1',
 }
 
 export const resetAll = () => {
