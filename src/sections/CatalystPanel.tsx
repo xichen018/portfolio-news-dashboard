@@ -1,22 +1,19 @@
 import { useState } from 'react'
-import type { CatalystEvent, EventType } from '@/types'
+import { ExternalLink, Plus, Trash2 } from 'lucide-react'
+import type { CatalystCategory, CatalystEvent, EventType } from '@/types'
 import { countdownLabel, parseDay, uid, weekdayCN } from '@/lib/format'
 import Panel from './Panel'
 
-const TYPE_STYLE: Record<EventType, string> = {
-  财报: 'border-[rgba(34,211,238,0.5)] text-[var(--cyan)]',
-  宏观: 'border-[rgba(251,191,36,0.5)] text-[var(--amber)]',
-  FDA: 'border-[rgba(232,121,249,0.5)] text-[var(--magenta)]',
-  解禁: 'border-[rgba(52,211,153,0.5)] text-[var(--mint)]',
-  其他: 'border-[var(--line)] t3',
+const CATEGORIES: CatalystCategory[] = ['宏观信息', '资金流向与资金成本', '市场估值与潜在风险']
+const CATEGORY_STYLE: Record<CatalystCategory, string> = {
+  宏观信息: 'border-[rgba(34,211,238,0.5)] text-[var(--cyan)]',
+  资金流向与资金成本: 'border-[rgba(251,191,36,0.5)] text-[var(--amber)]',
+  市场估值与潜在风险: 'border-[rgba(248,113,113,0.5)] text-[var(--red)]',
 }
 
-const CD_STYLE = {
-  today: 'border-[rgba(248,113,113,0.6)] text-[var(--red)]',
-  soon: 'border-[rgba(34,211,238,0.5)] text-[var(--cyan)]',
-  later: 'border-[var(--line)] t3',
-  past: 'border-[var(--line)] t4',
-}
+const normalizeCategory = (event: CatalystEvent): CatalystCategory => event.category ?? (
+  event.type === '宏观' ? '宏观信息' : event.type === '解禁' ? '资金流向与资金成本' : '市场估值与潜在风险'
+)
 
 interface Props {
   events: CatalystEvent[]
@@ -25,105 +22,46 @@ interface Props {
 
 export default function CatalystPanel({ events, setEvents }: Props) {
   const [showForm, setShowForm] = useState(false)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
-  const [form, setForm] = useState({ date: '', type: '财报' as EventType, title: '', ticker: '', note: '' })
-
-  const sorted = [...events].sort((a, b) => a.date.localeCompare(b.date))
-  const upcoming = events.filter((e) => countdownLabel(e.date).tone !== 'past').length
+  const [activeCategory, setActiveCategory] = useState<CatalystCategory>('宏观信息')
+  const [form, setForm] = useState({ date: '', title: '', note: '', sourceUrl: '', filterReason: '', aiAdvice: '' })
+  const visible = [...events].filter((event) => normalizeCategory(event) === activeCategory).sort((a, b) => a.date.localeCompare(b.date))
 
   const save = () => {
     if (!form.date || !form.title.trim()) return
-    setEvents((prev) => [
-      ...prev,
-      {
-        id: uid(),
-        date: form.date,
-        type: form.type,
-        title: form.title.trim(),
-        ticker: form.ticker.trim().toUpperCase() || undefined,
-        note: form.note.trim() || undefined,
-      },
-    ])
-    setForm({ date: '', type: '财报', title: '', ticker: '', note: '' })
+    setEvents((prev) => [...prev, {
+      id: uid(), date: form.date, type: '其他' as EventType, category: activeCategory,
+      title: form.title.trim(), note: form.note.trim() || undefined,
+      sourceUrl: form.sourceUrl.trim() || undefined, filterReason: form.filterReason.trim() || undefined,
+      aiAdvice: form.aiAdvice.trim() || undefined,
+      evidenceGap: form.aiAdvice.trim() ? undefined : '待补筛选 Prompt 与模型分析',
+    }])
+    setForm({ date: '', title: '', note: '', sourceUrl: '', filterReason: '', aiAdvice: '' })
     setShowForm(false)
   }
 
-  return (
-    <Panel
-      label="催化剂日历"
-      count={upcoming}
-      actions={
-        <button className="icon-btn" title="添加事件" onClick={() => setShowForm(!showForm)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-      }
-    >
-      {showForm && (
-        <div className="border border-[var(--line)] rounded-sm bg-[var(--bg2)] p-2 mb-2 space-y-1.5">
-          <div className="grid grid-cols-2 gap-1.5">
-            <input className="input2 font-mono2" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-            <select className="input2" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as EventType })}>
-              {(['财报', '宏观', 'FDA', '解禁', '其他'] as EventType[]).map((t) => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <input className="input2" placeholder="事件标题 *" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          <div className="grid grid-cols-2 gap-1.5">
-            <input className="input2 font-mono2" placeholder="关联代码（可选）" value={form.ticker} onChange={(e) => setForm({ ...form, ticker: e.target.value })} />
-            <input className="input2" placeholder="备注（可选）" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-          </div>
-          <div className="flex gap-1.5 pt-0.5">
-            <button className="flex-1 text-[12px] py-1.5 bg-[var(--cyan)] text-black font-semibold rounded-sm hover:opacity-85 transition-opacity" onClick={save}>添加</button>
-            <button className="px-3 text-[12px] t3 border border-[var(--line)] rounded-sm hover:text-[var(--txt)] transition-colors" onClick={() => setShowForm(false)}>取消</button>
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-1">
-        {sorted.length === 0 && <div className="empty-state">暂无事件——把财报、宏观数据、FDA 日期都放进来</div>}
-        {sorted.map((e) => {
-          const cd = countdownLabel(e.date)
-          const d = parseDay(e.date)
-          const past = cd.tone === 'past'
-          return (
-            <div
-              key={e.id}
-              className={`flex gap-2.5 items-start border border-[var(--line)] rounded-sm bg-[var(--bg2)] px-2.5 py-2 hover:border-[#26355c] transition-colors ${past ? 'opacity-40' : ''}`}
-            >
-              <div className="flex-none w-[52px] text-center border-r border-[var(--line-soft)] pr-2">
-                <div className="font-mono2 text-[12px] t1 leading-tight">{e.date.slice(5)}</div>
-                <div className="font-mono2 text-[9px] t4 mt-0.5">{weekdayCN(d)}</div>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className={`tag ${TYPE_STYLE[e.type]}`}>{e.type}</span>
-                  {e.ticker && <span className="tag font-mono2 t2">{e.ticker}</span>}
-                  <span className="text-[12.5px] t1 font-medium leading-snug">{e.title}</span>
-                </div>
-                {e.note && <p className="mt-1 text-[11.5px] t3 leading-relaxed">{e.note}</p>}
-              </div>
-              <div className="flex-none flex flex-col items-end gap-1">
-                <span className={`tag ${CD_STYLE[cd.tone]}`}>{cd.label}</span>
-                {confirmId === e.id ? (
-                  <button
-                    className="font-mono2 text-[9px] text-[var(--red)]"
-                    onClick={() => setEvents((prev) => prev.filter((x) => x.id !== e.id))}
-                  >
-                    确认删除
-                  </button>
-                ) : (
-                  <button className="icon-btn" style={{ padding: 2 }} title="删除" onClick={() => { setConfirmId(e.id); setTimeout(() => setConfirmId(null), 2500) }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 6h18M8 6V4h8v2m1 0-1 14H8L7 6" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </Panel>
-  )
+  return <Panel label="市场监测 · 过滤后信息" count={events.length} actions={
+    <button className="icon-btn" title="添加过滤结果" aria-label="添加过滤结果" onClick={() => setShowForm(!showForm)}><Plus size={13} /></button>
+  }>
+    <div className="grid grid-cols-3 gap-1 mb-2" role="tablist">
+      {CATEGORIES.map((category) => <button key={category} role="tab" aria-selected={activeCategory === category}
+        className={`min-h-9 px-1 text-[10px] leading-tight border rounded-sm ${activeCategory === category ? CATEGORY_STYLE[category] + ' bg-[var(--bg2)]' : 'border-[var(--line)] t4'}`}
+        onClick={() => setActiveCategory(category)}>{category}</button>)}
+    </div>
+    {showForm && <div className="border border-[var(--line)] rounded-sm bg-[var(--bg2)] p-2 mb-2 space-y-1.5">
+      <div className="grid grid-cols-2 gap-1.5"><input className="input2 font-mono2" type="date" value={form.date} onChange={(e) => setForm({...form,date:e.target.value})}/><input className="input2" placeholder="标题 *" value={form.title} onChange={(e) => setForm({...form,title:e.target.value})}/></div>
+      <input className="input2" placeholder="来源链接" value={form.sourceUrl} onChange={(e) => setForm({...form,sourceUrl:e.target.value})}/>
+      <textarea className="input2" rows={2} placeholder="事实摘要" value={form.note} onChange={(e) => setForm({...form,note:e.target.value})}/>
+      <textarea className="input2" rows={2} placeholder="为何通过过滤" value={form.filterReason} onChange={(e) => setForm({...form,filterReason:e.target.value})}/>
+      <textarea className="input2" rows={2} placeholder="AI 建议（模型接入前可留空）" value={form.aiAdvice} onChange={(e) => setForm({...form,aiAdvice:e.target.value})}/>
+      <div className="flex gap-1.5"><button className="action-primary flex-1" onClick={save}>保存</button><button className="action-secondary" onClick={() => setShowForm(false)}>取消</button></div>
+    </div>}
+    <div className="space-y-1.5">
+      {visible.length === 0 && <div className="empty-state">该类别暂无通过过滤的信息</div>}
+      {visible.map((event) => { const cd=countdownLabel(event.date); return <article key={event.id} className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2.5">
+        <div className="flex gap-2 items-start"><div className="font-mono2 text-[10px] t3 flex-none">{event.date.slice(5)}<br/>{weekdayCN(parseDay(event.date))}</div><div className="min-w-0 flex-1"><div className="flex gap-1.5 items-center flex-wrap"><span className={`tag ${CATEGORY_STYLE[normalizeCategory(event)]}`}>{normalizeCategory(event)}</span><strong className="text-[12.5px] font-medium">{event.title}</strong><span className="tag t4">{cd.label}</span></div>{event.note && <p className="mt-1.5 text-[11.5px] t3 leading-relaxed">{event.note}</p>}{event.filterReason && <p className="mt-1 text-[10.5px] t4">过滤依据 · {event.filterReason}</p>}</div>
+          {event.sourceUrl && <a href={event.sourceUrl} target="_blank" rel="noreferrer" className="icon-btn" title="打开来源"><ExternalLink size={12}/></a>}<button className="icon-btn" title="删除" onClick={() => setEvents((prev)=>prev.filter((item)=>item.id!==event.id))}><Trash2 size={12}/></button></div>
+        <div className="mt-2 border-l-2 border-[var(--red)] bg-[rgba(248,113,113,0.05)] p-2"><div className="font-mono2 text-[9px] text-[var(--red)] mb-1">AI 建议</div><p className="text-[11.5px] t2 leading-relaxed">{event.aiAdvice || event.evidenceGap || '待补筛选 Prompt 与模型分析'}</p></div>
+      </article>})}
+    </div>
+  </Panel>
 }

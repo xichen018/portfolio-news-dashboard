@@ -8,15 +8,16 @@ import TwitterPanel from '@/sections/TwitterPanel'
 import IdeasPanel from '@/sections/IdeasPanel'
 import DisciplinePanel from '@/sections/DisciplinePanel'
 import { LS_KEYS, useLocalStorage } from '@/hooks/useLocalStorage'
-import { seedEvents, seedHoldings, seedIdeas, seedNews, seedTrades, seedTwitter } from '@/data/seed'
+import { seedEvents, seedHoldings, seedIdeas, seedNews, seedTrades, seedTwitter, seedXDigest, X_HANDLES } from '@/data/seed'
 import { countdownLabel, currentMonth } from '@/lib/format'
-import type { CatalystEvent, Holding, Idea, NewsItem, TradeCounter, TwitterAccount } from '@/types'
+import type { CatalystEvent, Holding, Idea, NewsItem, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
 
 export default function Home() {
   const [holdings, setHoldings] = useLocalStorage<Holding[]>(LS_KEYS.holdings, seedHoldings)
   const [events, setEvents] = useLocalStorage<CatalystEvent[]>(LS_KEYS.events, seedEvents)
   const [news, setNews] = useLocalStorage<NewsItem[]>(LS_KEYS.news, seedNews)
   const [twitter, setTwitter] = useLocalStorage<TwitterAccount[]>(LS_KEYS.twitter, seedTwitter)
+  const [xDigest, setXDigest] = useLocalStorage<XDigestItem[]>(LS_KEYS.xDigest, seedXDigest)
   const [ideas, setIdeas] = useLocalStorage<Idea[]>(LS_KEYS.ideas, seedIdeas)
   const [trades, setTrades] = useLocalStorage<TradeCounter>(LS_KEYS.trades, seedTrades)
 
@@ -27,6 +28,18 @@ export default function Home() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trades.month])
+
+  useEffect(() => {
+    setTwitter((previous) => {
+      const existing = new Set(previous.map((account) => account.handle.toLowerCase()))
+      const missing = X_HANDLES.filter((handle) => !existing.has(handle.toLowerCase())).map((handle) => ({
+        id: crypto.randomUUID(), handle, name: handle, focus: '待分类', note: '',
+      }))
+      return missing.length ? [...previous, ...missing] : previous
+    })
+    // Only merge the configured watchlist when this application version loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const nextEvent = [...events]
     .filter((e) => countdownLabel(e.date).tone !== 'past')
@@ -64,7 +77,7 @@ export default function Home() {
           {/* 右栏：X 关注 + 陈化池 + 纪律 */}
           <div className="lg:col-span-3 flex flex-col gap-2 min-h-0">
             <div className="flex-1 min-h-[260px] flex">
-              <TwitterPanel accounts={twitter} setAccounts={setTwitter} />
+              <TwitterPanel accounts={twitter} digest={xDigest} setDigest={setXDigest} />
             </div>
             <div className="flex-none max-h-[34%] min-h-[200px] flex">
               <IdeasPanel ideas={ideas} setIdeas={setIdeas} />

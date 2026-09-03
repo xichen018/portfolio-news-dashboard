@@ -1,97 +1,21 @@
 import { useState } from 'react'
-import type { TwitterAccount } from '@/types'
-import { uid } from '@/lib/format'
+import { ChevronDown, ChevronUp, ExternalLink, Plus, Trash2 } from 'lucide-react'
+import type { TwitterAccount, XDigestCategory, XDigestItem } from '@/types'
+import { timeAgo, uid } from '@/lib/format'
 import Panel from './Panel'
 
-interface Props {
-  accounts: TwitterAccount[]
-  setAccounts: (fn: (prev: TwitterAccount[]) => TwitterAccount[]) => void
-}
+const CATEGORIES: XDigestCategory[]=['市场观点','meme','风险汇总','估值逻辑']
+interface Props { accounts:TwitterAccount[]; digest:XDigestItem[]; setDigest:(fn:(prev:XDigestItem[])=>XDigestItem[])=>void }
 
-export default function TwitterPanel({ accounts, setAccounts }: Props) {
-  const [showForm, setShowForm] = useState(false)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
-  const [form, setForm] = useState({ handle: '', name: '', focus: '' })
-
-  const save = () => {
-    if (!form.handle.trim()) return
-    setAccounts((prev) => [
-      ...prev,
-      {
-        id: uid(),
-        handle: form.handle.trim().replace(/^@/, ''),
-        name: form.name.trim() || form.handle.trim(),
-        focus: form.focus.trim() || '未分类',
-        note: '',
-      },
-    ])
-    setForm({ handle: '', name: '', focus: '' })
-    setShowForm(false)
-  }
-
-  const updateNote = (id: string, note: string) => {
-    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, note } : a)))
-  }
-
-  return (
-    <Panel
-      label="X 关注 · 观点归档"
-      count={accounts.length}
-      actions={
-        <button className="icon-btn" title="添加账号" onClick={() => setShowForm(!showForm)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-      }
-    >
-      {showForm && (
-        <div className="border border-[var(--line)] rounded-sm bg-[var(--bg2)] p-2 mb-2 space-y-1.5">
-          <input className="input2 font-mono2" placeholder="X 账号（不含 @）*" value={form.handle} onChange={(e) => setForm({ ...form, handle: e.target.value })} />
-          <div className="grid grid-cols-2 gap-1.5">
-            <input className="input2" placeholder="名称" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <input className="input2" placeholder="关注领域" value={form.focus} onChange={(e) => setForm({ ...form, focus: e.target.value })} />
-          </div>
-          <div className="flex gap-1.5 pt-0.5">
-            <button className="flex-1 text-[12px] py-1.5 bg-[var(--cyan)] text-black font-semibold rounded-sm hover:opacity-85 transition-opacity" onClick={save}>添加</button>
-            <button className="px-3 text-[12px] t3 border border-[var(--line)] rounded-sm hover:text-[var(--txt)] transition-colors" onClick={() => setShowForm(false)}>取消</button>
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-1.5">
-        {accounts.length === 0 && <div className="empty-state">暂无关注账号</div>}
-        {accounts.map((a) => (
-          <article key={a.id} className="border border-[var(--line)] rounded-sm bg-[var(--bg2)] px-2.5 py-2 hover:border-[#26355c] transition-colors">
-            <div className="flex items-center gap-1.5">
-              <a href={`https://x.com/${a.handle}`} target="_blank" rel="noreferrer" className="link-cyan font-mono2 text-[12px] font-semibold">
-                @{a.handle}
-              </a>
-              <span className="text-[11px] t3 truncate">{a.name}</span>
-              <span className="flex-1" />
-              <span className="tag t3">{a.focus}</span>
-              {confirmId === a.id ? (
-                <button className="font-mono2 text-[9px] text-[var(--red)]" onClick={() => setAccounts((prev) => prev.filter((x) => x.id !== a.id))}>
-                  确认
-                </button>
-              ) : (
-                <button className="icon-btn" style={{ padding: 2 }} title="删除" onClick={() => { setConfirmId(a.id); setTimeout(() => setConfirmId(null), 2500) }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 6h18M8 6V4h8v2m1 0-1 14H8L7 6" />
-                  </svg>
-                </button>
-              )}
-            </div>
-            <textarea
-              className="input2 mt-1.5"
-              rows={2}
-              placeholder="今日观点待记录——打开 X 扫一遍，把值得归档的看法写在这里（自动保存）"
-              value={a.note}
-              onChange={(e) => updateNote(a.id, e.target.value)}
-            />
-          </article>
-        ))}
-      </div>
-    </Panel>
-  )
+export default function TwitterPanel({accounts,digest,setDigest}:Props){
+  const [showAccounts,setShowAccounts]=useState(false)
+  const [showForm,setShowForm]=useState(false)
+  const [form,setForm]=useState({category:'市场观点' as XDigestCategory,title:'',summary:'',handles:'',sourceUrl:''})
+  const save=()=>{if(!form.title.trim()||!form.summary.trim())return;setDigest((prev)=>[{id:uid(),category:form.category,title:form.title.trim(),summary:form.summary.trim(),handles:form.handles.split(/[\s,，]+/).map((x)=>x.replace(/^@/,'')).filter(Boolean),sourceUrl:form.sourceUrl.trim()||undefined,ts:Date.now()},...prev]);setForm({category:'市场观点',title:'',summary:'',handles:'',sourceUrl:''});setShowForm(false)}
+  return <Panel label="X · 30h 观点归档" count={accounts.length} actions={<button className="icon-btn" title="记录汇总" onClick={()=>setShowForm(!showForm)}><Plus size={13}/></button>}>
+    <div className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2 mb-2"><div className="flex items-center justify-between"><span className="font-mono2 text-[10px] t2">监测规则 · {accounts.length} 个账户 / 30h</span><button className="icon-btn" title="查看账户" onClick={()=>setShowAccounts(!showAccounts)}>{showAccounts?<ChevronUp size={12}/>:<ChevronDown size={12}/>}</button></div><p className="mt-1 text-[10.5px] t4 leading-relaxed">聚类美股、港股与宏观交易观点；meme 单列；风险与估值逻辑分别汇总。原始推文不足时不生成结论。</p></div>
+    {showAccounts&&<div className="flex gap-1 flex-wrap mb-2">{accounts.map((a)=><a key={a.id} href={`https://x.com/${a.handle}`} target="_blank" rel="noreferrer" className="tag t3 hover:text-[var(--cyan)]">@{a.handle}</a>)}</div>}
+    {showForm&&<div className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2 mb-2 space-y-1.5"><div className="grid grid-cols-2 gap-1.5"><select className="input2" value={form.category} onChange={(e)=>setForm({...form,category:e.target.value as XDigestCategory})}>{CATEGORIES.map((x)=><option key={x}>{x}</option>)}</select><input className="input2" placeholder="涉及账号，空格分隔" value={form.handles} onChange={(e)=>setForm({...form,handles:e.target.value})}/></div><input className="input2" placeholder="归纳标题 *" value={form.title} onChange={(e)=>setForm({...form,title:e.target.value})}/><textarea className="input2" rows={3} placeholder="合并后的观点与证据 *" value={form.summary} onChange={(e)=>setForm({...form,summary:e.target.value})}/><input className="input2" placeholder="代表性推文链接" value={form.sourceUrl} onChange={(e)=>setForm({...form,sourceUrl:e.target.value})}/><div className="flex gap-1.5"><button className="action-primary flex-1" onClick={save}>归档</button><button className="action-secondary" onClick={()=>setShowForm(false)}>取消</button></div></div>}
+    <div className="space-y-1.5">{CATEGORIES.map((category)=>{const items=digest.filter((x)=>x.category===category);return <section key={category}><div className="font-mono2 text-[9.5px] t4 mb-1 mt-2">{category} · {items.length}</div>{items.length===0?<div className="border border-dashed border-[var(--line)] px-2 py-1.5 text-[10.5px] t4">待补数据</div>:items.map((item)=><article key={item.id} className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2 mb-1"><div className="flex gap-1.5 items-center"><strong className="text-[11.5px] font-medium flex-1">{item.title}</strong><span className="text-[9px] t4">{timeAgo(item.ts)}</span>{item.sourceUrl&&<a href={item.sourceUrl} target="_blank" rel="noreferrer" className="icon-btn" title="代表性推文"><ExternalLink size={10}/></a>}<button className="icon-btn" title="删除" onClick={()=>setDigest((prev)=>prev.filter((x)=>x.id!==item.id))}><Trash2 size={10}/></button></div><p className="mt-1 text-[10.5px] t3 leading-relaxed">{item.summary}</p>{item.handles.length>0&&<div className="mt-1 font-mono2 text-[9px] text-[var(--cyan)]">{item.handles.map((x)=>`@${x}`).join(' · ')}</div>}</article>)}</section>})}</div>
+  </Panel>
 }

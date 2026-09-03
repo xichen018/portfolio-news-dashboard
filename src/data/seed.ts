@@ -1,4 +1,4 @@
-import type { CatalystEvent, Holding, Idea, NewsItem, TradeCounter, TwitterAccount } from '@/types'
+import type { CatalystEvent, Holding, Idea, NewsItem, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
 import { addDays, currentMonth, hoursAgo, uid } from '@/lib/format'
 
 /**
@@ -71,23 +71,29 @@ export const seedEvents = (): CatalystEvent[] => [
     id: uid(),
     date: addDays(1),
     type: '财报',
+    category: '市场估值与潜在风险',
     title: 'NVDA 季度财报（盘后）',
     ticker: 'NVDA',
     note: '重点看数据中心收入增速与下季指引；财报前检查仓位与对冲。',
+    filterReason: '示例：可能改变盈利预期与估值锚。',
+    aiAdvice: '示例建议：事件前复核仓位上限与失效条件，不基于单一预期加仓。',
     demo: true,
   },
   {
     id: uid(),
     date: addDays(3),
     type: '宏观',
+    category: '资金流向与资金成本',
     title: '美国 CPI 数据',
     note: '影响联储降息路径，成长股与加密对利率敏感。',
+    filterReason: '示例：可能改变实际利率和风险资产折现率。',
     demo: true,
   },
   {
     id: uid(),
     date: addDays(6),
     type: '宏观',
+    category: '资金流向与资金成本',
     title: 'FOMC 会议纪要',
     note: '关注缩表节奏与内部投票分歧。',
     demo: true,
@@ -96,6 +102,7 @@ export const seedEvents = (): CatalystEvent[] => [
     id: uid(),
     date: addDays(9),
     type: 'FDA',
+    category: '市场估值与潜在风险',
     title: 'LLY 口服 GLP-1 关键数据读出',
     ticker: 'LLY',
     note: '二元事件：数据前考虑是否降低敞口。',
@@ -105,6 +112,7 @@ export const seedEvents = (): CatalystEvent[] => [
     id: uid(),
     date: addDays(14),
     type: '解禁',
+    category: '资金流向与资金成本',
     title: '某持仓标的锁定期解禁',
     note: '示例：解禁前后通常波动放大，提前设定应对。',
     demo: true,
@@ -113,6 +121,7 @@ export const seedEvents = (): CatalystEvent[] => [
     id: uid(),
     date: addDays(21),
     type: '宏观',
+    category: '宏观信息',
     title: '美国季度 GDP 修正值',
     demo: true,
   },
@@ -126,6 +135,9 @@ export const seedNews = (): NewsItem[] => [
     summary: '财报前 IV 抬升意味着市场在定价大幅波动；如持有正股，可提前决定是否在财报前减仓。',
     source: '示例来源',
     sentiment: '中性',
+    kind: '重大事项',
+    filterReason: '示例：财报窗口的波动率变化影响事件风险管理。',
+    aiAdvice: '示例建议：先确认事件风险预算，再决定是否跨财报持仓。',
     ts: hoursAgo(2),
     demo: true,
   },
@@ -136,6 +148,7 @@ export const seedNews = (): NewsItem[] => [
     summary: '竞品数据陆续读出，板块波动加大；关注自家管线的相对疗效与安全性。',
     source: '示例来源',
     sentiment: '风险',
+    kind: '重大新闻',
     ts: hoursAgo(5),
     demo: true,
   },
@@ -146,6 +159,7 @@ export const seedNews = (): NewsItem[] => [
     summary: '多空双方围绕交付量与毛利率展开博弈；做空仓位注意控制持有期。',
     source: '示例来源',
     sentiment: '中性',
+    kind: '重大事项',
     ts: hoursAgo(20),
     demo: true,
   },
@@ -156,16 +170,24 @@ export const seedNews = (): NewsItem[] => [
     summary: '资金面仍是当前最主要的边际驱动；留意宏观数据日的联动回撤。',
     source: '示例来源',
     sentiment: '利好',
+    kind: '重大新闻',
     ts: hoursAgo(26),
     demo: true,
   },
 ]
 
-export const seedTwitter = (): TwitterAccount[] => [
-  { id: uid(), handle: 'elerianm', name: 'Mohamed El-Erian', focus: '宏观 / 联储', note: '' },
-  { id: uid(), handle: 'LizAnnSonders', name: 'Liz Ann Sonders', focus: '美股策略', note: '' },
-  { id: uid(), handle: 'fundstrat', name: 'Tom Lee', focus: '美股 / 加密', note: '' },
-  { id: uid(), handle: 'woonomic', name: 'Willy Woo', focus: '加密链上数据', note: '' },
+export const X_HANDLES = ['LizAnnSonders', 'jimcramer', 'chao_bitcoin29', 'qinbafrank', 'MoneyPrinter0x', 'labubu_trader', 'daidaibtc', 'XtineFang', 'ParadisLabs', 'au_xbt', 'Web3Feng', 'cyrilxuq', 'aleabitoreddit', 'xingpt', 'Bitfatty', 'Imlaomao', '0xVeryBigOrange', 'shirleyusy', 'keyahayek', 'WilliamLu126', 'Joylou1209', 'mingyue00001', 'LeePima', '0xLoki_Zeng', 'Michael_Liu93']
+
+export const seedTwitter = (): TwitterAccount[] => X_HANDLES.map((handle) => ({
+  id: uid(), handle, name: handle, focus: '待分类', note: '',
+}))
+
+export const seedXDigest = (): XDigestItem[] => [
+  {
+    id: uid(), category: '市场观点', title: '等待接入 X 数据源',
+    summary: '已配置账户名单与 30 小时窗口。取得原始推文前不生成市场归纳。',
+    handles: [], ts: Date.now(),
+  },
 ]
 
 export const seedIdeas = (): Idea[] => [
@@ -174,6 +196,7 @@ export const seedIdeas = (): Idea[] => [
     title: '美国靶向药突破 → 关注创新药板块',
     source: '新闻',
     note: '单一公司事件是否预示平台级机会？先查同靶点管线公司，陈化后再决定。',
+    rawContent: '示例：可在这里粘贴与 Claude 的完整对话或看到信息后的原始想法。',
     createdAt: hoursAgo(30),
     status: 'aging',
   },
