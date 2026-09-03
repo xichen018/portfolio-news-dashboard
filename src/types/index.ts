@@ -29,6 +29,8 @@ export interface CatalystEvent {
   filterReason?: string
   aiAdvice?: string
   evidenceGap?: string
+  importance?: 'high'
+  importanceSourceUrl?: string
   demo?: boolean
 }
 
