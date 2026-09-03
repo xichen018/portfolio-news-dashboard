@@ -12,10 +12,11 @@ import { LS_KEYS, useLocalStorage } from '@/hooks/useLocalStorage'
 import { seedEvents, seedHoldings, seedIdeas, seedNews, seedTrades, seedTwitter, seedXDigest, X_HANDLES } from '@/data/seed'
 import { countdownLabel, currentMonth, uid } from '@/lib/format'
 import { useDailyReport } from '@/hooks/useDailyReport'
-import type { CatalystEvent, Holding, Idea, NewsItem, ReportChange, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
+import { usePersistentHoldings } from '@/hooks/usePersistentHoldings'
+import type { CatalystEvent, Idea, NewsItem, ReportChange, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
 
 export default function Home() {
-  const [holdings, setHoldings] = useLocalStorage<Holding[]>(LS_KEYS.holdings, seedHoldings)
+  const [holdings, setHoldings, holdingsSync] = usePersistentHoldings(seedHoldings)
   const [events, setEvents] = useLocalStorage<CatalystEvent[]>(LS_KEYS.events, seedEvents)
   const [news, setNews] = useLocalStorage<NewsItem[]>(LS_KEYS.news, seedNews)
   const [twitter, setTwitter] = useLocalStorage<TwitterAccount[]>(LS_KEYS.twitter, seedTwitter)
@@ -125,7 +126,7 @@ export default function Home() {
 
         <footer className="border-t border-[var(--line)] px-3 py-2 flex flex-wrap gap-x-4 gap-y-1 items-center">
           <span className="font-mono2 text-[9.5px] t4">
-            数据仅保存在当前浏览器，可用右上角按钮导出备份或导入恢复
+            持仓：{holdingsSync==='synced'?'AWS 已同步':holdingsSync==='loading'?'正在同步':'本地保存，云端暂不可用'}
           </span>
           <span className="font-mono2 text-[9.5px] t4">日报数据：{report.status === 'ready' ? `已核验 · ${report.updatedAt}` : report.status === 'loading' ? '读取中' : '待补数据'}</span>
           <span className="flex-1" />

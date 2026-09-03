@@ -1,0 +1,19 @@
+[Unit]
+Description=Private portfolio holdings state API
+After=network.target
+
+[Service]
+Type=simple
+User=portfolio-state
+Group=portfolio-state
+Environment=PORTFOLIO_STATE_FILE=/var/lib/portfolio-news-dashboard/holdings.json
+ExecStart=/usr/local/bin/portfolio-state-api
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/portfolio-news-dashboard
+
+[Install]
+WantedBy=multi-user.target
