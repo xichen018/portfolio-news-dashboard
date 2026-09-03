@@ -50,7 +50,7 @@ export default function Home() {
     setHoldings((previous) => previous.filter((item) => !item.demo))
     setIdeas((previous) => previous.filter((item) => !['美国靶向药突破 → 关注创新药板块', '铜库存持续下降，关注铜矿股'].includes(item.title)))
     setXDigest((previous) => previous.filter((item) => item.title !== '等待接入 X 数据源'))
-    setEvents((previous) => [...previous.filter((item) => !item.demo && !item.id.startsWith('report-event-')), ...report.events])
+    setEvents((previous) => [...previous.filter((item) => !item.demo && !item.id.startsWith('report-') && !item.id.startsWith('calendar-')), ...report.events])
     setNews((previous) => [...previous.filter((item) => !item.demo && !item.id.startsWith('report-news-')), ...report.news])
     if (hadLegacyDemo && trades.used === 1) setTrades((previous) => ({ ...previous, used: 0 }))
     // Report data is replaced as one verified snapshot whenever the fetch completes.
