@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import type { CatalystCategory, CatalystEvent, EventType } from '@/types'
-import { countdownLabel, parseDay, uid, weekdayCN } from '@/lib/format'
+import { countdownLabel, dayDiff, parseDay, uid, weekdayCN } from '@/lib/format'
 import Panel from './Panel'
 
 const CATEGORIES: CatalystCategory[] = ['宏观信息', '资金流向与资金成本', '市场估值与潜在风险']
@@ -24,7 +24,10 @@ export default function CatalystPanel({ events, setEvents }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [activeCategory, setActiveCategory] = useState<CatalystCategory>('宏观信息')
   const [form, setForm] = useState({ date: '', title: '', note: '', sourceUrl: '', filterReason: '', aiAdvice: '' })
-  const visible = [...events].filter((event) => normalizeCategory(event) === activeCategory).sort((a, b) => a.date.localeCompare(b.date))
+  const visible = [...events]
+    .filter((event) => normalizeCategory(event) === activeCategory)
+    .filter((event) => !event.id.startsWith('calendar-') || dayDiff(event.date) >= 0)
+    .sort((a, b) => a.date.localeCompare(b.date))
 
   const save = () => {
     if (!form.date || !form.title.trim()) return
