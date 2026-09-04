@@ -7,6 +7,10 @@ Type=simple
 User=portfolio-state
 Group=portfolio-state
 Environment=PORTFOLIO_STATE_FILE=/var/lib/portfolio-news-dashboard/holdings.json
+Environment=XAI_USAGE_FILE=/var/lib/portfolio-news-dashboard/xai-usage.json
+Environment=XAI_MODEL=grok-4.3
+Environment=XAI_DAILY_REQUEST_LIMIT=40
+EnvironmentFile=/home/ubuntu/.config/daily-report/secrets.env
 ExecStart=/usr/local/bin/portfolio-state-api
 Restart=on-failure
 NoNewPrivileges=true

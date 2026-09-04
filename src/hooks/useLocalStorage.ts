@@ -28,6 +28,7 @@ export const LS_KEYS = {
   news: 'cockpit.news.v1',
   twitter: 'cockpit.twitter.v1',
   xDigest: 'cockpit.x-digest.v1',
+  xChat: 'cockpit.x-chat.v1',
   ideas: 'cockpit.ideas.v1',
   trades: 'cockpit.trades.v1',
   decisionSnapshot: 'cockpit.decision-snapshot.v1',

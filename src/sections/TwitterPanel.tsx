@@ -1,21 +1,94 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, ExternalLink, Plus, Trash2 } from 'lucide-react'
-import type { TwitterAccount, XDigestCategory, XDigestItem } from '@/types'
-import { timeAgo, uid } from '@/lib/format'
+import { ExternalLink, LoaderCircle, Send, Trash2 } from 'lucide-react'
+import type { TwitterAccount, XChatMessage, XDigestItem } from '@/types'
+import { uid } from '@/lib/format'
 import Panel from './Panel'
 
-const CATEGORIES: XDigestCategory[]=['市场观点','meme','风险汇总','估值逻辑']
-interface Props { accounts:TwitterAccount[]; digest:XDigestItem[]; setDigest:(fn:(prev:XDigestItem[])=>XDigestItem[])=>void }
+interface Props {
+  accounts: TwitterAccount[]
+  digest: XDigestItem[]
+  messages: XChatMessage[]
+  setDigest: (fn: (prev: XDigestItem[]) => XDigestItem[]) => void
+  setMessages: (fn: (prev: XChatMessage[]) => XChatMessage[]) => void
+}
 
-export default function TwitterPanel({accounts,digest,setDigest}:Props){
-  const [showAccounts,setShowAccounts]=useState(true)
-  const [showForm,setShowForm]=useState(false)
-  const [form,setForm]=useState({category:'市场观点' as XDigestCategory,title:'',summary:'',handles:'',sourceUrl:''})
-  const save=()=>{if(!form.title.trim()||!form.summary.trim())return;setDigest((prev)=>[{id:uid(),category:form.category,title:form.title.trim(),summary:form.summary.trim(),handles:form.handles.split(/[\s,，]+/).map((x)=>x.replace(/^@/,'')).filter(Boolean),sourceUrl:form.sourceUrl.trim()||undefined,ts:Date.now()},...prev]);setForm({category:'市场观点',title:'',summary:'',handles:'',sourceUrl:''});setShowForm(false)}
-  return <Panel label="X · 30h 观点归档" count={accounts.length} actions={<button className="icon-btn" title="记录汇总" onClick={()=>setShowForm(!showForm)}><Plus size={13}/></button>}>
-    <div className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2 mb-2"><div className="flex items-center justify-between"><span className="font-mono2 text-[10px] t2">监测规则 · {accounts.length} 个账户 / 30h</span><button className="icon-btn" title={showAccounts?'收起账户':'展开账户'} onClick={()=>setShowAccounts(!showAccounts)}>{showAccounts?<ChevronUp size={12}/>:<ChevronDown size={12}/>}</button></div><p className="mt-1 text-[10.5px] t4 leading-relaxed">账号名单已配置；尚未接入 X API，因此不生成推文摘要。接入后将聚类市场观点，单列 meme、风险与估值逻辑。</p></div>
-    {showAccounts&&<div className="flex gap-1 flex-wrap mb-2">{accounts.map((a)=><a key={a.id} href={`https://x.com/${a.handle}`} target="_blank" rel="noreferrer" className="tag t3 hover:text-[var(--cyan)]">@{a.handle}</a>)}</div>}
-    {showForm&&<div className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2 mb-2 space-y-1.5"><div className="grid grid-cols-2 gap-1.5"><select className="input2" value={form.category} onChange={(e)=>setForm({...form,category:e.target.value as XDigestCategory})}>{CATEGORIES.map((x)=><option key={x}>{x}</option>)}</select><input className="input2" placeholder="涉及账号，空格分隔" value={form.handles} onChange={(e)=>setForm({...form,handles:e.target.value})}/></div><input className="input2" placeholder="归纳标题 *" value={form.title} onChange={(e)=>setForm({...form,title:e.target.value})}/><textarea className="input2" rows={3} placeholder="合并后的观点与证据 *" value={form.summary} onChange={(e)=>setForm({...form,summary:e.target.value})}/><input className="input2" placeholder="代表性推文链接" value={form.sourceUrl} onChange={(e)=>setForm({...form,sourceUrl:e.target.value})}/><div className="flex gap-1.5"><button className="action-primary flex-1" onClick={save}>归档</button><button className="action-secondary" onClick={()=>setShowForm(false)}>取消</button></div></div>}
-    <div className="space-y-1.5">{CATEGORIES.map((category)=>{const items=digest.filter((x)=>x.category===category);return <section key={category}><div className="font-mono2 text-[9.5px] t4 mb-1 mt-2">{category} · {items.length}</div>{items.length===0?<div className="border border-dashed border-[var(--line)] px-2 py-1.5 text-[10.5px] t4">待补数据</div>:items.map((item)=><article key={item.id} className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2 mb-1"><div className="flex gap-1.5 items-center"><strong className="text-[11.5px] font-medium flex-1">{item.title}</strong><span className="text-[9px] t4">{timeAgo(item.ts)}</span>{item.sourceUrl&&<a href={item.sourceUrl} target="_blank" rel="noreferrer" className="icon-btn" title="代表性推文"><ExternalLink size={10}/></a>}<button className="icon-btn" title="删除" onClick={()=>setDigest((prev)=>prev.filter((x)=>x.id!==item.id))}><Trash2 size={10}/></button></div><p className="mt-1 text-[10.5px] t3 leading-relaxed">{item.summary}</p>{item.handles.length>0&&<div className="mt-1 font-mono2 text-[9px] text-[var(--cyan)]">{item.handles.map((x)=>`@${x}`).join(' · ')}</div>}</article>)}</section>})}</div>
+type ChatResponse = { answer: string; citations: string[]; remaining_today: number }
+
+const errorMessage = (status: number) => {
+  if (status === 429) return '今日对话额度已用完。'
+  if (status === 400) return '消息过长，请缩短后重试。'
+  return 'Grok 暂时无法响应，请稍后重试。'
+}
+
+export default function TwitterPanel({ accounts, digest, messages, setDigest, setMessages }: Props) {
+  const [view, setView] = useState<'chat' | 'watchlist'>('chat')
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [remaining, setRemaining] = useState<number | null>(null)
+
+  const send = async () => {
+    const content = input.trim()
+    if (!content || sending) return
+    const userMessage: XChatMessage = { id: uid(), role: 'user', content, ts: Date.now() }
+    const conversation = [...messages, userMessage].slice(-20)
+    setMessages(() => conversation)
+    setInput('')
+    setSending(true)
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: conversation.map(({ role, content: text }) => ({ role, content: text })) }),
+      })
+      if (!response.ok) throw new Error(String(response.status))
+      const payload = await response.json() as ChatResponse
+      const assistantMessage: XChatMessage = {
+        id: uid(), role: 'assistant', content: payload.answer,
+        citations: payload.citations, ts: Date.now(),
+      }
+      setMessages((previous) => [...previous, assistantMessage].slice(-40))
+      setRemaining(payload.remaining_today)
+    } catch (error) {
+      const status = Number(error instanceof Error ? error.message : 0)
+      const assistantMessage: XChatMessage = {
+        id: uid(), role: 'assistant', content: errorMessage(status), ts: Date.now(),
+      }
+      setMessages((previous) => [...previous, assistantMessage])
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return <Panel label="Grok · X 市场情报" count={messages.filter((item) => item.role === 'assistant').length} actions={
+    <div className="flex items-center gap-1">
+      <button className={`tag ${view === 'chat' ? 'text-[var(--cyan)]' : 't4'}`} onClick={() => setView('chat')}>对话</button>
+      <button className={`tag ${view === 'watchlist' ? 'text-[var(--cyan)]' : 't4'}`} onClick={() => setView('watchlist')}>关注</button>
+    </div>
+  }>
+    {view === 'chat' ? <div className="h-full min-h-[250px] flex flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+        {messages.length === 0 && <div className="h-full min-h-[150px] grid place-items-center text-center">
+          <span className="font-mono2 text-[10px] t4">向 Grok 询问市场或 X 上的最新讨论</span>
+        </div>}
+        {messages.map((message) => <article key={message.id} className={message.role === 'user' ? 'ml-5 border-l-2 border-[var(--cyan)] bg-[var(--bg2)] p-2' : 'mr-2 border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2'}>
+          <div className="font-mono2 text-[9px] t4 mb-1">{message.role === 'user' ? 'YOU' : 'GROK'}</div>
+          <p className="text-[10.5px] t2 leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          {!!message.citations?.length && <div className="flex flex-wrap gap-1 mt-2">{message.citations.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer" className="tag text-[var(--cyan)]" title={url}>X 来源 {index + 1}<ExternalLink size={9} className="inline ml-1" /></a>)}</div>}
+        </article>)}
+        {sending && <div className="flex items-center gap-1.5 text-[10px] t4"><LoaderCircle size={11} className="animate-spin" />Grok 正在检索</div>}
+      </div>
+      <div className="border-t border-[var(--line)] mt-2 pt-2">
+        <textarea className="input2 w-full resize-none" rows={2} maxLength={8000} placeholder="询问市场、持仓或 X 上的实时观点" value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() } }} />
+        <div className="flex items-center gap-1 mt-1">
+          <button className="icon-btn" title="清空对话" disabled={messages.length === 0 || sending} onClick={() => setMessages(() => [])}><Trash2 size={12} /></button>
+          <span className="font-mono2 text-[9px] t4">{remaining == null ? 'Grok 4.3 · X Search' : `今日剩余 ${remaining} 次`}</span>
+          <span className="flex-1" />
+          <button className="action-primary px-2" title="发送" disabled={!input.trim() || sending} onClick={() => void send()}><Send size={12} /></button>
+        </div>
+      </div>
+    </div> : <div className="space-y-2">
+      <div className="flex gap-1 flex-wrap">{accounts.map((account) => <a key={account.id} href={`https://x.com/${account.handle}`} target="_blank" rel="noreferrer" className="tag t3 hover:text-[var(--cyan)]">@{account.handle}</a>)}</div>
+      {digest.length > 0 && <div className="border-t border-[var(--line)] pt-2 space-y-1">{digest.map((item) => <article key={item.id} className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2"><div className="flex items-center gap-1"><strong className="text-[11px] font-medium flex-1">{item.title}</strong>{item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="icon-btn" title="查看原帖"><ExternalLink size={10} /></a>}<button className="icon-btn" title="删除" onClick={() => setDigest((previous) => previous.filter((entry) => entry.id !== item.id))}><Trash2 size={10} /></button></div><p className="mt-1 text-[10px] t3 leading-relaxed">{item.summary}</p></article>)}</div>}
+    </div>}
   </Panel>
 }

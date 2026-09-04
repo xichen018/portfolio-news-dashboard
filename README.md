@@ -4,10 +4,14 @@
 
 ## 当前版本
 
-- 纯前端 Vite/React 应用，无账号系统和后端。
+- Vite/React 前端通过受 Nginx Basic Auth 保护的本地服务保存持仓，并代理 Grok 对话。
 - 数据保存在当前浏览器的 localStorage，可从右上角导出或导入 JSON 备份。
 - 页面中的初始内容均为设计示例，不代表实时行情或投资结论。
-- 真实行情和新闻数据源尚未接入。
+- 日报发布数据为行情和新闻主来源；Grok 对话可按需调用 xAI X Search，原帖只作为观点线索。
+
+## Grok 对话
+
+生产服务从 `/home/ubuntu/.config/daily-report/secrets.env` 读取 `XAI_API_KEY`，密钥不会发送至浏览器。默认模型为 `grok-4.3`，单次最多输出 1,200 token，全站每日最多 40 次请求。可通过 `XAI_MODEL` 和 `XAI_DAILY_REQUEST_LIMIT` 调整；X Search 内容不得自动视为已确认事实。
 
 ## 本地开发
 

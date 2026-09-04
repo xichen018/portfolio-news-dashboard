@@ -13,7 +13,7 @@ import { seedEvents, seedHoldings, seedIdeas, seedNews, seedTrades, seedTwitter,
 import { countdownLabel, currentMonth, uid } from '@/lib/format'
 import { useDailyReport } from '@/hooks/useDailyReport'
 import { usePersistentHoldings } from '@/hooks/usePersistentHoldings'
-import type { CatalystEvent, Idea, NewsItem, ReportChange, TradeCounter, TwitterAccount, XDigestItem } from '@/types'
+import type { CatalystEvent, Idea, NewsItem, ReportChange, TradeCounter, TwitterAccount, XChatMessage, XDigestItem } from '@/types'
 
 export default function Home() {
   const [holdings, setHoldings, holdingsSync] = usePersistentHoldings(seedHoldings)
@@ -21,6 +21,7 @@ export default function Home() {
   const [news, setNews] = useLocalStorage<NewsItem[]>(LS_KEYS.news, seedNews)
   const [twitter, setTwitter] = useLocalStorage<TwitterAccount[]>(LS_KEYS.twitter, seedTwitter)
   const [xDigest, setXDigest] = useLocalStorage<XDigestItem[]>(LS_KEYS.xDigest, seedXDigest)
+  const [xChat, setXChat] = useLocalStorage<XChatMessage[]>(LS_KEYS.xChat,()=>[])
   const [ideas, setIdeas] = useLocalStorage<Idea[]>(LS_KEYS.ideas, seedIdeas)
   const [trades, setTrades] = useLocalStorage<TradeCounter>(LS_KEYS.trades, seedTrades)
   const [decisionSnapshot, setDecisionSnapshot] = useLocalStorage<{runId:string;views:Record<string,string>}>(LS_KEYS.decisionSnapshot,()=>({runId:'',views:{}}))
@@ -113,7 +114,7 @@ export default function Home() {
           {/* 右栏：X 关注 + 陈化池 + 纪律 */}
           <div className="lg:col-span-3 flex flex-col gap-2 min-h-0">
             <div className="flex-1 min-h-[260px] flex">
-              <TwitterPanel accounts={twitter} digest={xDigest} setDigest={setXDigest} />
+              <TwitterPanel accounts={twitter} digest={xDigest} messages={xChat} setDigest={setXDigest} setMessages={setXChat} />
             </div>
             <div className="flex-none max-h-[34%] min-h-[200px] flex">
               <IdeasPanel ideas={ideas} setIdeas={setIdeas} />

@@ -4,14 +4,28 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 DATA_FILE = Path(os.getenv("PORTFOLIO_STATE_FILE", "/var/lib/portfolio-news-dashboard/holdings.json"))
+USAGE_FILE = Path(os.getenv("XAI_USAGE_FILE", "/var/lib/portfolio-news-dashboard/xai-usage.json"))
 MAX_BODY = 256 * 1024
+MAX_CHAT_MESSAGES = 20
+MAX_CHAT_CHARS = 24_000
+MAX_DAILY_CHAT_REQUESTS = int(os.getenv("XAI_DAILY_REQUEST_LIMIT", "40"))
+XAI_URL = "https://api.x.ai/v1/responses"
+XAI_MODEL = os.getenv("XAI_MODEL", "grok-4.3")
+_usage_lock = threading.Lock()
 MARKETS = {"美股", "A股", "港股", "加密", "其他"}
 DIRECTIONS = {"多", "空", "空2x"}
+
+XAI_INSTRUCTIONS = """你是嵌入个人投资工作台的中文研究助手。回答必须简洁、直接并适合职业投资者阅读。
+需要了解X上的实时帖子、账号观点或讨论时使用x_search，并优先引用原帖。明确区分已确认事实、帖子作者观点和你的分析；X帖子不能自动升级为公司、监管或宏观事实。涉及财务、监管、政策或事件日期时，提示需要一级来源确认。不得编造帖子、作者、数字、日期、链接或市场共识。"""
 
 
 def validate_holdings(value: Any) -> list[dict[str, Any]]:
@@ -63,6 +77,110 @@ def write_state(holdings: list[dict[str, Any]]) -> None:
             os.unlink(temporary)
 
 
+def validate_chat_messages(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list) or not 1 <= len(value) <= MAX_CHAT_MESSAGES:
+        raise ValueError("messages must be a non-empty bounded array")
+    result: list[dict[str, str]] = []
+    total = 0
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"role", "content"}:
+            raise ValueError("invalid message shape")
+        role, content = item.get("role"), item.get("content")
+        if role not in {"user", "assistant"} or not isinstance(content, str):
+            raise ValueError("invalid message")
+        content = content.strip()
+        if not content or len(content) > 8_000:
+            raise ValueError("invalid message content")
+        total += len(content)
+        result.append({"role": role, "content": content})
+    if result[-1]["role"] != "user" or total > MAX_CHAT_CHARS:
+        raise ValueError("invalid conversation")
+    return result
+
+
+def _consume_chat_quota(now: datetime | None = None) -> int:
+    today = (now or datetime.now(timezone.utc)).date().isoformat()
+    with _usage_lock:
+        usage = {"date": today, "count": 0}
+        if USAGE_FILE.exists():
+            try:
+                loaded = json.loads(USAGE_FILE.read_text(encoding="utf-8"))
+                if loaded.get("date") == today and isinstance(loaded.get("count"), int):
+                    usage = loaded
+            except (OSError, ValueError, TypeError):
+                pass
+        if usage["count"] >= MAX_DAILY_CHAT_REQUESTS:
+            raise RuntimeError("daily_limit")
+        usage["count"] += 1
+        USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(prefix="xai-usage-", suffix=".tmp", dir=USAGE_FILE.parent)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(usage, handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, USAGE_FILE)
+            os.chmod(USAGE_FILE, 0o600)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+        return MAX_DAILY_CHAT_REQUESTS - usage["count"]
+
+
+def _extract_xai_response(payload: dict[str, Any]) -> tuple[str, list[str], dict[str, int]]:
+    text_parts: list[str] = []
+    citations: list[str] = []
+    for output in payload.get("output", []):
+        if not isinstance(output, dict) or output.get("type") != "message":
+            continue
+        for content in output.get("content", []):
+            if not isinstance(content, dict) or content.get("type") != "output_text":
+                continue
+            if isinstance(content.get("text"), str):
+                text_parts.append(content["text"].strip())
+            for annotation in content.get("annotations", []):
+                if isinstance(annotation, dict) and isinstance(annotation.get("url"), str):
+                    citations.append(annotation["url"])
+    for citation in payload.get("citations", []):
+        if isinstance(citation, str):
+            citations.append(citation)
+        elif isinstance(citation, dict) and isinstance(citation.get("url"), str):
+            citations.append(citation["url"])
+    text = "\n\n".join(part for part in text_parts if part)
+    if not text:
+        raise RuntimeError("empty_response")
+    usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+    normalized_usage = {
+        "input_tokens": int(usage.get("input_tokens") or 0),
+        "output_tokens": int(usage.get("output_tokens") or 0),
+    }
+    return text, list(dict.fromkeys(citations))[:12], normalized_usage
+
+
+def call_xai(messages: list[dict[str, str]]) -> tuple[str, list[str], dict[str, int]]:
+    api_key = os.getenv("XAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("not_configured")
+    request = urllib.request.Request(
+        XAI_URL,
+        data=json.dumps({
+            "model": XAI_MODEL,
+            "instructions": XAI_INSTRUCTIONS,
+            "input": messages,
+            "tools": [{"type": "x_search"}],
+            "max_output_tokens": 1200,
+            "reasoning": {"effort": "low"},
+        }).encode(),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=90) as response:
+        payload = json.loads(response.read())
+    if not isinstance(payload, dict):
+        raise RuntimeError("invalid_response")
+    return _extract_xai_response(payload)
+
+
 class Handler(BaseHTTPRequestHandler):
     def _json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -81,6 +199,33 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"initialized": initialized, "holdings": holdings})
         except Exception:
             self._json(500, {"error": "state_unavailable"})
+
+    def do_POST(self) -> None:
+        if self.path != "/chat":
+            self._json(404, {"error": "not_found"}); return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or length > MAX_BODY:
+                raise ValueError("invalid request size")
+            payload = json.loads(self.rfile.read(length))
+            messages = validate_chat_messages(payload.get("messages") if isinstance(payload, dict) else None)
+            remaining = _consume_chat_quota()
+            answer, citations, usage = call_xai(messages)
+            self._json(200, {"answer": answer, "citations": citations, "usage": usage, "remaining_today": remaining})
+        except (ValueError, json.JSONDecodeError):
+            self._json(400, {"error": "invalid_chat"})
+        except RuntimeError as exc:
+            error = str(exc)
+            if error == "daily_limit":
+                self._json(429, {"error": "daily_limit"})
+            elif error == "not_configured":
+                self._json(503, {"error": "chat_unavailable"})
+            else:
+                self._json(502, {"error": "upstream_unavailable"})
+        except (urllib.error.URLError, TimeoutError, OSError):
+            self._json(502, {"error": "upstream_unavailable"})
+        except Exception:
+            self._json(500, {"error": "chat_unavailable"})
 
     def do_PUT(self) -> None:
         if self.path != "/holdings":

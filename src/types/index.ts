@@ -72,6 +72,14 @@ export interface XDigestItem {
   sourceUrl?: string
 }
 
+export interface XChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  citations?: string[]
+  ts: number
+}
+
 export type IdeaSource = '新闻' | '推特' | '自研' | '其他'
 export type IdeaStatus = 'aging' | 'upgraded' | 'dropped'
 
