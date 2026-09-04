@@ -61,6 +61,32 @@ class StateApiTests(unittest.TestCase):
         finally:
             API.MAX_DAILY_CHAT_REQUESTS = original_limit
 
+    def test_x_handles_are_normalized_and_bounded(self) -> None:
+        self.assertEqual(API.validate_x_handles(["@XAI", "xai", "LizAnnSonders"]), ["xai", "lizannsonders"])
+        with self.assertRaises(ValueError):
+            API.validate_x_handles(["invalid-handle"])
+
+    def test_x_digest_batches_handles_and_enforces_exact_window(self) -> None:
+        handles = [f"account{index}" for index in range(21)]
+        now = datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc)
+        calls = []
+
+        def fake_call(messages, tool):
+            calls.append((messages, tool))
+            return "重点", ["https://x.com/account0/status/1"], {"input_tokens": 1, "output_tokens": 1}
+
+        with patch.object(API, "_consume_chat_quota", return_value=38) as quota, patch.object(API, "_call_xai", side_effect=fake_call):
+            result = API.build_x_digest(handles, now)
+
+        quota.assert_called_once_with(now, 2)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls[0][1]["allowed_x_handles"]), 20)
+        self.assertEqual(calls[0][1]["from_date"], "2026-09-03")
+        self.assertEqual(calls[0][1]["to_date"], "2026-09-04")
+        self.assertIn("2026-09-03T06:00:00+00:00", calls[0][0][0]["content"])
+        self.assertEqual(result["remaining_today"], 38)
+        self.assertEqual(len(result["summaries"]), 2)
+
     def test_extracts_answer_citations_and_usage(self) -> None:
         answer, citations, usage = API._extract_xai_response({
             "output": [{"type": "message", "content": [{
@@ -81,6 +107,8 @@ class StateApiTests(unittest.TestCase):
             result = API.call_xai([{"role": "user", "content": "test"}])
         request = opened.call_args.args[0]
         self.assertEqual(request.headers["Authorization"], "Bearer secret-test-key")
+        request_payload = API.json.loads(request.data)
+        self.assertEqual(request_payload["tools"], [{"type": "x_search"}])
         self.assertNotIn("secret-test-key", repr(result))
 
 

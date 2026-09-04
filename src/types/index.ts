@@ -70,6 +70,7 @@ export interface XDigestItem {
   handles: string[]
   ts: number
   sourceUrl?: string
+  sourceUrls?: string[]
 }
 
 export interface XChatMessage {

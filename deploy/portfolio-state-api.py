@@ -7,7 +7,7 @@ import tempfile
 import threading
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -98,7 +98,9 @@ def validate_chat_messages(value: Any) -> list[dict[str, str]]:
     return result
 
 
-def _consume_chat_quota(now: datetime | None = None) -> int:
+def _consume_chat_quota(now: datetime | None = None, amount: int = 1) -> int:
+    if amount < 1 or amount > 3:
+        raise ValueError("invalid quota amount")
     today = (now or datetime.now(timezone.utc)).date().isoformat()
     with _usage_lock:
         usage = {"date": today, "count": 0}
@@ -109,9 +111,9 @@ def _consume_chat_quota(now: datetime | None = None) -> int:
                     usage = loaded
             except (OSError, ValueError, TypeError):
                 pass
-        if usage["count"] >= MAX_DAILY_CHAT_REQUESTS:
+        if usage["count"] + amount > MAX_DAILY_CHAT_REQUESTS:
             raise RuntimeError("daily_limit")
-        usage["count"] += 1
+        usage["count"] += amount
         USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary = tempfile.mkstemp(prefix="xai-usage-", suffix=".tmp", dir=USAGE_FILE.parent)
         try:
@@ -157,7 +159,7 @@ def _extract_xai_response(payload: dict[str, Any]) -> tuple[str, list[str], dict
     return text, list(dict.fromkeys(citations))[:12], normalized_usage
 
 
-def call_xai(messages: list[dict[str, str]]) -> tuple[str, list[str], dict[str, int]]:
+def _call_xai(messages: list[dict[str, str]], tool: dict[str, Any]) -> tuple[str, list[str], dict[str, int]]:
     api_key = os.getenv("XAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("not_configured")
@@ -167,7 +169,7 @@ def call_xai(messages: list[dict[str, str]]) -> tuple[str, list[str], dict[str, 
             "model": XAI_MODEL,
             "instructions": XAI_INSTRUCTIONS,
             "input": messages,
-            "tools": [{"type": "x_search"}],
+            "tools": [tool],
             "max_output_tokens": 1200,
             "reasoning": {"effort": "low"},
         }).encode(),
@@ -179,6 +181,56 @@ def call_xai(messages: list[dict[str, str]]) -> tuple[str, list[str], dict[str, 
     if not isinstance(payload, dict):
         raise RuntimeError("invalid_response")
     return _extract_xai_response(payload)
+
+
+def call_xai(messages: list[dict[str, str]]) -> tuple[str, list[str], dict[str, int]]:
+    return _call_xai(messages, {"type": "x_search"})
+
+
+def validate_x_handles(value: Any) -> list[str]:
+    if not isinstance(value, list) or not 1 <= len(value) <= 50:
+        raise ValueError("invalid handles")
+    result: list[str] = []
+    for handle in value:
+        if not isinstance(handle, str):
+            raise ValueError("invalid handle")
+        normalized = handle.strip().lstrip("@").lower()
+        if not normalized or len(normalized) > 15 or not all(character.isalnum() or character == "_" for character in normalized):
+            raise ValueError("invalid handle")
+        if normalized not in result:
+            result.append(normalized)
+    return result
+
+
+def build_x_digest(handles: list[str], now: datetime | None = None) -> dict[str, Any]:
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    window_start = current - timedelta(hours=30)
+    batches = [handles[index:index + 20] for index in range(0, len(handles), 20)]
+    remaining = _consume_chat_quota(current, len(batches))
+    summaries = []
+    for batch in batches:
+        prompt = f"""扫描指定X账号在严格时间窗口内发布的原创帖子和有实质内容的转帖。
+窗口开始：{window_start.isoformat()}
+窗口结束：{current.isoformat()}
+账号：{', '.join('@' + handle for handle in batch)}
+
+只保留足以改变持仓、宏观、利率、流动性、加密、行业供需、盈利或风险判断的增量信息，最多5条，按重要性排序。普通行情感想、无依据喊单、广告、重复内容和窗口外帖子全部省略。每条写明账号、原帖时间、已表达的事实或作者观点，以及具体投资含义；不得把帖子观点写成已确认事实。若没有达到门槛的内容，只回答“本组账号过去30小时无重大新增”。使用简洁中文，不写方法说明。"""
+        answer, citations, usage = _call_xai(
+            [{"role": "user", "content": prompt}],
+            {
+                "type": "x_search",
+                "allowed_x_handles": batch,
+                "from_date": window_start.date().isoformat(),
+                "to_date": current.date().isoformat(),
+            },
+        )
+        summaries.append({"handles": batch, "summary": answer, "citations": citations, "usage": usage})
+    return {
+        "generated_at": current.isoformat(),
+        "window_start": window_start.isoformat(),
+        "summaries": summaries,
+        "remaining_today": remaining,
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -201,13 +253,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": "state_unavailable"})
 
     def do_POST(self) -> None:
-        if self.path != "/chat":
+        if self.path not in {"/chat", "/x-digest"}:
             self._json(404, {"error": "not_found"}); return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > MAX_BODY:
                 raise ValueError("invalid request size")
             payload = json.loads(self.rfile.read(length))
+            if self.path == "/x-digest":
+                handles = validate_x_handles(payload.get("handles") if isinstance(payload, dict) else None)
+                self._json(200, build_x_digest(handles))
+                return
             messages = validate_chat_messages(payload.get("messages") if isinstance(payload, dict) else None)
             remaining = _consume_chat_quota()
             answer, citations, usage = call_xai(messages)

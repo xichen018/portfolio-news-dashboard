@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, LoaderCircle, Send, Trash2 } from 'lucide-react'
+import { ExternalLink, LoaderCircle, RefreshCw, Send, Trash2 } from 'lucide-react'
 import type { TwitterAccount, XChatMessage, XDigestItem } from '@/types'
 import { uid } from '@/lib/format'
 import Panel from './Panel'
@@ -13,6 +13,7 @@ interface Props {
 }
 
 type ChatResponse = { answer: string; citations: string[]; remaining_today: number }
+type DigestResponse = { generated_at: string; remaining_today: number; summaries: Array<{ handles: string[]; summary: string; citations: string[] }> }
 
 const errorMessage = (status: number) => {
   if (status === 429) return '今日对话额度已用完。'
@@ -24,6 +25,7 @@ export default function TwitterPanel({ accounts, digest, messages, setDigest, se
   const [view, setView] = useState<'chat' | 'watchlist'>('chat')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [remaining, setRemaining] = useState<number | null>(null)
 
   const send = async () => {
@@ -59,6 +61,41 @@ export default function TwitterPanel({ accounts, digest, messages, setDigest, se
     }
   }
 
+  const refreshDigest = async () => {
+    if (refreshing || accounts.length === 0) return
+    setRefreshing(true)
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/x-digest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handles: accounts.map((account) => account.handle) }),
+      })
+      if (!response.ok) throw new Error(String(response.status))
+      const payload = await response.json() as DigestResponse
+      const generated = new Date(payload.generated_at).getTime()
+      const automatic = payload.summaries.map((summary, index): XDigestItem => ({
+        id: `xai-30h-${generated}-${index}`,
+        category: '市场观点',
+        title: payload.summaries.length === 1 ? '过去30小时重点' : `过去30小时重点 · ${index + 1}/${payload.summaries.length}`,
+        summary: summary.summary,
+        handles: summary.handles,
+        sourceUrls: summary.citations,
+        ts: generated,
+      }))
+      setDigest((previous) => [...automatic, ...previous.filter((item) => !item.id.startsWith('xai-30h-'))])
+      setRemaining(payload.remaining_today)
+    } catch (error) {
+      const status = Number(error instanceof Error ? error.message : 0)
+      const message = errorMessage(status)
+      setDigest((previous) => [{
+        id: `xai-30h-error-${Date.now()}`, category: '风险汇总', title: '30小时扫描未完成',
+        summary: message, handles: [], ts: Date.now(),
+      }, ...previous.filter((item) => !item.id.startsWith('xai-30h-error-'))])
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   return <Panel label="Grok · X 市场情报" count={messages.filter((item) => item.role === 'assistant').length} actions={
     <div className="flex items-center gap-1">
       <button className={`tag ${view === 'chat' ? 'text-[var(--cyan)]' : 't4'}`} onClick={() => setView('chat')}>对话</button>
@@ -87,8 +124,9 @@ export default function TwitterPanel({ accounts, digest, messages, setDigest, se
         </div>
       </div>
     </div> : <div className="space-y-2">
-      <div className="flex gap-1 flex-wrap">{accounts.map((account) => <a key={account.id} href={`https://x.com/${account.handle}`} target="_blank" rel="noreferrer" className="tag t3 hover:text-[var(--cyan)]">@{account.handle}</a>)}</div>
-      {digest.length > 0 && <div className="border-t border-[var(--line)] pt-2 space-y-1">{digest.map((item) => <article key={item.id} className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2"><div className="flex items-center gap-1"><strong className="text-[11px] font-medium flex-1">{item.title}</strong>{item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="icon-btn" title="查看原帖"><ExternalLink size={10} /></a>}<button className="icon-btn" title="删除" onClick={() => setDigest((previous) => previous.filter((entry) => entry.id !== item.id))}><Trash2 size={10} /></button></div><p className="mt-1 text-[10px] t3 leading-relaxed">{item.summary}</p></article>)}</div>}
+      <div className="flex items-center gap-1"><span className="font-mono2 text-[9px] t4 flex-1">{accounts.length} 个账号 · 严格30小时</span><button className="action-secondary flex items-center gap-1" disabled={refreshing || accounts.length === 0} onClick={() => void refreshDigest()}>{refreshing ? <LoaderCircle size={11} className="animate-spin" /> : <RefreshCw size={11} />}更新</button></div>
+      <div className="flex gap-1 flex-wrap max-h-20 overflow-y-auto">{accounts.map((account) => <a key={account.id} href={`https://x.com/${account.handle}`} target="_blank" rel="noreferrer" className="tag t3 hover:text-[var(--cyan)]">@{account.handle}</a>)}</div>
+      {digest.length === 0 ? <div className="border border-dashed border-[var(--line)] px-2 py-3 text-center text-[10px] t4">尚未扫描</div> : <div className="border-t border-[var(--line)] pt-2 space-y-1">{digest.map((item) => <article key={item.id} className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2"><div className="flex items-center gap-1"><strong className="text-[11px] font-medium flex-1">{item.title}</strong>{item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="icon-btn" title="查看原帖"><ExternalLink size={10} /></a>}<button className="icon-btn" title="删除" onClick={() => setDigest((previous) => previous.filter((entry) => entry.id !== item.id))}><Trash2 size={10} /></button></div><p className="mt-1 text-[10px] t3 leading-relaxed whitespace-pre-wrap">{item.summary}</p>{!!item.sourceUrls?.length && <div className="flex flex-wrap gap-1 mt-2">{item.sourceUrls.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer" className="tag text-[var(--cyan)]" title={url}>原帖 {index + 1}<ExternalLink size={9} className="inline ml-1" /></a>)}</div>}</article>)}</div>}
     </div>}
   </Panel>
 }
