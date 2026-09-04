@@ -22,7 +22,7 @@ const errorMessage = (status: number) => {
 }
 
 export default function TwitterPanel({ accounts, digest, messages, setDigest, setMessages }: Props) {
-  const [view, setView] = useState<'chat' | 'watchlist'>('chat')
+  const [view, setView] = useState<'chat' | 'watchlist'>('watchlist')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
