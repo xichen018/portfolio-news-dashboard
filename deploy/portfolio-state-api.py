@@ -14,6 +14,7 @@ from typing import Any
 
 DATA_FILE = Path(os.getenv("PORTFOLIO_STATE_FILE", "/var/lib/portfolio-news-dashboard/holdings.json"))
 USAGE_FILE = Path(os.getenv("XAI_USAGE_FILE", "/var/lib/portfolio-news-dashboard/xai-usage.json"))
+DIGEST_FILE = Path(os.getenv("XAI_DIGEST_FILE", "/var/lib/portfolio-news-dashboard/x-digest.json"))
 MAX_BODY = 256 * 1024
 MAX_CHAT_MESSAGES = 20
 MAX_CHAT_CHARS = 24_000
@@ -72,6 +73,30 @@ def write_state(holdings: list[dict[str, Any]]) -> None:
             os.fsync(handle.fileno())
         os.replace(temporary, DATA_FILE)
         os.chmod(DATA_FILE, 0o600)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def read_x_digest() -> tuple[bool, dict[str, Any]]:
+    if not DIGEST_FILE.exists():
+        return False, {}
+    payload = json.loads(DIGEST_FILE.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("generated_at"), str) or not isinstance(payload.get("summaries"), list):
+        raise ValueError("invalid digest state")
+    return True, payload
+
+
+def write_x_digest(payload: dict[str, Any]) -> None:
+    DIGEST_FILE.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix="x-digest-", suffix=".tmp", dir=DIGEST_FILE.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, DIGEST_FILE)
+        os.chmod(DIGEST_FILE, 0o600)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -244,9 +269,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
-        if self.path != "/holdings":
+        if self.path not in {"/holdings", "/x-digest"}:
             self._json(404, {"error": "not_found"}); return
         try:
+            if self.path == "/x-digest":
+                initialized, digest = read_x_digest()
+                self._json(200, {"initialized": initialized, **digest})
+                return
             initialized, holdings = read_state()
             self._json(200, {"initialized": initialized, "holdings": holdings})
         except Exception:
@@ -262,7 +291,9 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             if self.path == "/x-digest":
                 handles = validate_x_handles(payload.get("handles") if isinstance(payload, dict) else None)
-                self._json(200, build_x_digest(handles))
+                digest = build_x_digest(handles)
+                write_x_digest(digest)
+                self._json(200, digest)
                 return
             messages = validate_chat_messages(payload.get("messages") if isinstance(payload, dict) else None)
             remaining = _consume_chat_quota()

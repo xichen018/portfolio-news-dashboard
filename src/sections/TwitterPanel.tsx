@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ExternalLink, LoaderCircle, RefreshCw, Send, Trash2 } from 'lucide-react'
 import type { TwitterAccount, XChatMessage, XDigestItem } from '@/types'
 import { uid } from '@/lib/format'
@@ -13,7 +13,7 @@ interface Props {
 }
 
 type ChatResponse = { answer: string; citations: string[]; remaining_today: number }
-type DigestResponse = { generated_at: string; remaining_today: number; summaries: Array<{ handles: string[]; summary: string; citations: string[] }> }
+type DigestResponse = { initialized?: boolean; generated_at?: string; remaining_today?: number; summaries?: Array<{ handles: string[]; summary: string; citations: string[] }> }
 
 const errorMessage = (status: number) => {
   if (status === 429) return '今日对话额度已用完。'
@@ -27,6 +27,37 @@ export default function TwitterPanel({ accounts, digest, messages, setDigest, se
   const [sending, setSending] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [remaining, setRemaining] = useState<number | null>(null)
+
+  const mergeAutomaticDigest = useCallback((payload: DigestResponse) => {
+    if (!payload.initialized && (!payload.generated_at || !payload.summaries?.length)) return
+    if (!payload.generated_at || !payload.summaries?.length) return
+    const generated = new Date(payload.generated_at).getTime()
+    if (!Number.isFinite(generated)) return
+    const automatic = payload.summaries.map((summary, index): XDigestItem => ({
+      id: `xai-30h-${generated}-${index}`,
+      category: '市场观点',
+      title: payload.summaries!.length === 1 ? '过去30小时重点' : `过去30小时重点 · ${index + 1}/${payload.summaries!.length}`,
+      summary: summary.summary,
+      handles: summary.handles,
+      sourceUrls: summary.citations,
+      ts: generated,
+    }))
+    setDigest((previous) => {
+      const currentAutomatic = previous.filter((item) => item.id.startsWith('xai-30h-') && !item.id.startsWith('xai-30h-error-'))
+      if (currentAutomatic.some((item) => item.ts > generated)) return previous
+      return [...automatic, ...previous.filter((item) => !item.id.startsWith('xai-30h-'))]
+    })
+    if (typeof payload.remaining_today === 'number') setRemaining(payload.remaining_today)
+  }, [setDigest])
+
+  useEffect(() => {
+    let active = true
+    fetch(`${import.meta.env.BASE_URL}api/x-digest`, { cache: 'no-store' })
+      .then((response) => { if (!response.ok) throw new Error(String(response.status)); return response.json() as Promise<DigestResponse> })
+      .then((payload) => { if (active) mergeAutomaticDigest(payload) })
+      .catch(() => undefined)
+    return () => { active = false }
+  }, [mergeAutomaticDigest])
 
   const send = async () => {
     const content = input.trim()
@@ -72,18 +103,7 @@ export default function TwitterPanel({ accounts, digest, messages, setDigest, se
       })
       if (!response.ok) throw new Error(String(response.status))
       const payload = await response.json() as DigestResponse
-      const generated = new Date(payload.generated_at).getTime()
-      const automatic = payload.summaries.map((summary, index): XDigestItem => ({
-        id: `xai-30h-${generated}-${index}`,
-        category: '市场观点',
-        title: payload.summaries.length === 1 ? '过去30小时重点' : `过去30小时重点 · ${index + 1}/${payload.summaries.length}`,
-        summary: summary.summary,
-        handles: summary.handles,
-        sourceUrls: summary.citations,
-        ts: generated,
-      }))
-      setDigest((previous) => [...automatic, ...previous.filter((item) => !item.id.startsWith('xai-30h-'))])
-      setRemaining(payload.remaining_today)
+      mergeAutomaticDigest({ ...payload, initialized: true })
     } catch (error) {
       const status = Number(error instanceof Error ? error.message : 0)
       const message = errorMessage(status)

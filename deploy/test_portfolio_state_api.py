@@ -19,6 +19,7 @@ class StateApiTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         API.DATA_FILE = Path(self.temp.name) / "holdings.json"
         API.USAGE_FILE = Path(self.temp.name) / "usage.json"
+        API.DIGEST_FILE = Path(self.temp.name) / "x-digest.json"
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -31,6 +32,17 @@ class StateApiTests(unittest.TestCase):
         }])
         API.write_state(holdings)
         self.assertEqual(API.read_state(), (True, holdings))
+
+    def test_x_digest_round_trip_and_initialization(self) -> None:
+        self.assertEqual(API.read_x_digest(), (False, {}))
+        digest = {
+            "generated_at": "2026-09-04T12:00:00+00:00",
+            "window_start": "2026-09-03T06:00:00+00:00",
+            "summaries": [{"handles": ["xai"], "summary": "无重大新增", "citations": []}],
+            "remaining_today": 38,
+        }
+        API.write_x_digest(digest)
+        self.assertEqual(API.read_x_digest(), (True, digest))
 
     def test_rejects_unknown_fields_and_invalid_weight(self) -> None:
         base = {"id": "one", "ticker": "GOOG", "name": "Alphabet", "market": "美股", "direction": "多", "weight": 10, "thesis": "", "invalidation": ""}
