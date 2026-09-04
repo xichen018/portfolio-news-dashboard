@@ -234,12 +234,26 @@ def build_x_digest(handles: list[str], now: datetime | None = None) -> dict[str,
     remaining = _consume_chat_quota(current, len(batches))
     summaries = []
     for batch in batches:
-        prompt = f"""扫描指定X账号在严格时间窗口内发布的原创帖子和有实质内容的转帖。
+        prompt = f"""扫描指定X账号在严格时间窗口内发布的原创帖子和有实质内容的转帖，为职业投资者制作高信噪比摘要。
 窗口开始：{window_start.isoformat()}
 窗口结束：{current.isoformat()}
 账号：{', '.join('@' + handle for handle in batch)}
 
-只保留足以改变持仓、宏观、利率、流动性、加密、行业供需、盈利或风险判断的增量信息，最多5条，按重要性排序。普通行情感想、无依据喊单、广告、重复内容和窗口外帖子全部省略。每条写明账号、原帖时间、已表达的事实或作者观点，以及具体投资含义；不得把帖子观点写成已确认事实。若没有达到门槛的内容，只回答“本组账号过去30小时无重大新增”。使用简洁中文，不写方法说明。"""
+入选必须同时满足：
+1. 帖子确实发布于上述30小时窗口；
+2. 包含此前未知或明显变化的信息，而不是复述价格走势；
+3. 至少具备一项决策价值：可验证的新事实或数据、明确且临近的催化剂、供需/盈利/政策变化，或有证据支撑且足以改变情景概率的观点；
+4. 能说清受影响资产及传导路径。
+
+直接剔除：泛泛宏观评论、单纯看多看空、目标价喊单、盘面复述、情绪表达、广告推广、抽奖、旧闻、重复转发、无新增信息的引用、无法确认发布时间的帖子，以及只有相关性但没有投资含义的内容。作者知名度不能代替信息价值。
+
+最多保留3条，按对仓位决策的重要性排序。每条固定写成：
+“账号｜香港时间
+新增信息：一句话
+投资含义：受影响资产、方向和传导逻辑
+事实属性：已确认事实 / 作者观点 / 待一级来源确认”
+
+只引用最终入选帖，不要返回搜索候选或被淘汰帖的引用。不得把作者观点写成事实。若没有任何帖子满足全部门槛，只回答“本组账号过去30小时无重大新增”，不要附带链接、解释或候选内容。使用简洁中文，不写方法说明。"""
         answer, citations, usage = _call_xai(
             [{"role": "user", "content": prompt}],
             {
@@ -249,6 +263,8 @@ def build_x_digest(handles: list[str], now: datetime | None = None) -> dict[str,
                 "to_date": current.date().isoformat(),
             },
         )
+        if "无重大新增" in answer:
+            citations = []
         summaries.append({"handles": batch, "summary": answer, "citations": citations, "usage": usage})
     return {
         "generated_at": current.isoformat(),
