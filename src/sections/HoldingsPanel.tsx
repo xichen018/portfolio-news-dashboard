@@ -173,6 +173,7 @@ export default function HoldingsPanel({ holdings, decisions, setHoldings }: Prop
             <div className="mt-2 border-t border-[var(--line-soft)] pt-2">
               <div className="font-mono2 text-[9px] text-[var(--cyan)]">AI 决策框架 · 已核验日报</div>
               {!decision?<div className="mt-1 text-[10.5px] t4">待补数据</div>:<div className="mt-1.5 space-y-1.5 text-[10.5px] t2 leading-relaxed">
+                {h.weight>=25&&<p className="border-l-2 border-[var(--amber)] pl-2 text-[var(--amber)]">集中度提示：该持仓占组合 {h.weight}%，单一财报或回购事件可能主导组合净值；决策需先定义事件前后的减仓条件。</p>}
                 <p>{decision.view}</p>
                 {decision.evidence.length>0&&<p><span className="t4">证据：</span>{decision.evidence.join('；')}</p>}
                 {decision.pricing&&<p><span className="t4">定价：</span>{decision.pricing}</p>}
