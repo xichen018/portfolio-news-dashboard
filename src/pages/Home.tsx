@@ -17,7 +17,7 @@ import type { CatalystEvent, Idea, NewsItem, ReportChange, TradeCounter, Twitter
 
 export default function Home() {
   const [holdings, setHoldings, holdingsSync] = usePersistentHoldings(seedHoldings)
-  const [events, setEvents] = useLocalStorage<CatalystEvent[]>(LS_KEYS.events, seedEvents)
+  const [storedEvents, setStoredEvents] = useLocalStorage<CatalystEvent[]>(LS_KEYS.events, seedEvents)
   const [news, setNews] = useLocalStorage<NewsItem[]>(LS_KEYS.news, seedNews)
   const [twitter, setTwitter] = useLocalStorage<TwitterAccount[]>(LS_KEYS.twitter, seedTwitter)
   const [xDigest, setXDigest] = useLocalStorage<XDigestItem[]>(LS_KEYS.xDigest, seedXDigest)
@@ -27,6 +27,9 @@ export default function Home() {
   const [decisionSnapshot, setDecisionSnapshot] = useLocalStorage<{runId:string;views:Record<string,string>}>(LS_KEYS.decisionSnapshot,()=>({runId:'',views:{}}))
   const [reportChanges,setReportChanges]=useState<ReportChange[]>([])
   const report = useDailyReport()
+  const manualEvents=storedEvents.filter((item)=>!item.demo&&!item.id.startsWith('report-')&&!item.id.startsWith('calendar-'))
+  const events=[...manualEvents,...report.events]
+  const setEvents=(update:(previous:CatalystEvent[])=>CatalystEvent[])=>setStoredEvents((previous)=>update(previous.filter((item)=>!item.demo&&!item.id.startsWith('report-')&&!item.id.startsWith('calendar-'))))
 
   // 跨月自动重置交易额度
   useEffect(() => {
@@ -50,12 +53,17 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(()=>{
+    setStoredEvents((previous)=>previous.filter((item)=>!item.demo&&!item.id.startsWith('report-')&&!item.id.startsWith('calendar-')))
+    // Remove snapshots persisted by versions before report and user state were separated.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[])
+
   useEffect(() => {
     const hadLegacyDemo = holdings.some((item) => item.demo)
     setHoldings((previous) => previous.filter((item) => !item.demo))
     setIdeas((previous) => previous.filter((item) => !['美国靶向药突破 → 关注创新药板块', '铜库存持续下降，关注铜矿股'].includes(item.title)))
     setXDigest((previous) => previous.filter((item) => item.title !== '等待接入 X 数据源'))
-    setEvents((previous) => [...previous.filter((item) => !item.demo && !item.id.startsWith('report-') && !item.id.startsWith('calendar-')), ...report.events])
     setNews((previous) => [...previous.filter((item) => !item.demo && !item.id.startsWith('report-news-')), ...report.news])
     if (hadLegacyDemo && trades.used === 1) setTrades((previous) => ({ ...previous, used: 0 }))
     // Report data is replaced as one verified snapshot whenever the fetch completes.

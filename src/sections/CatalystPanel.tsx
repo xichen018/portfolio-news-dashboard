@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import type { CatalystCategory, CatalystEvent, EventType } from '@/types'
-import { countdownLabel, dayDiff, parseDay, uid, weekdayCN } from '@/lib/format'
+import { countdownLabel, currentMonth, dayDiff, parseDay, uid, weekdayCN } from '@/lib/format'
 import Panel from './Panel'
 
 const CATEGORIES: CatalystCategory[] = ['宏观信息', '资金流向与资金成本', '市场估值与潜在风险']
@@ -26,6 +26,7 @@ export default function CatalystPanel({ events, setEvents }: Props) {
   const [form, setForm] = useState({ date: '', title: '', note: '', sourceUrl: '', filterReason: '', aiAdvice: '' })
   const visible = [...events]
     .filter((event) => normalizeCategory(event) === activeCategory)
+    .filter((event) => event.date.startsWith(currentMonth()))
     .filter((event) => !event.id.startsWith('calendar-') || dayDiff(event.date) >= 0)
     .sort((a, b) => a.date.localeCompare(b.date))
 
@@ -42,7 +43,7 @@ export default function CatalystPanel({ events, setEvents }: Props) {
     setShowForm(false)
   }
 
-  return <Panel label="市场监测 · 本月日历与数据" count={events.length} actions={
+  return <Panel label="市场监测 · 本月日历与数据" count={visible.length} actions={
     <button className="icon-btn" title="添加过滤结果" aria-label="添加过滤结果" onClick={() => setShowForm(!showForm)}><Plus size={13} /></button>
   }>
     <div className="grid grid-cols-3 gap-1 mb-2" role="tablist">
@@ -62,7 +63,7 @@ export default function CatalystPanel({ events, setEvents }: Props) {
       {visible.length === 0 && <div className="empty-state">该类别暂无通过过滤的信息</div>}
       {visible.map((event) => { const cd=countdownLabel(event.date); return <article key={event.id} className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2.5">
         <div className="flex gap-2 items-start"><div className="font-mono2 text-[10px] t3 flex-none">{event.date.slice(5)}<br/>{weekdayCN(parseDay(event.date))}</div><div className="min-w-0 flex-1"><div className="flex gap-1.5 items-center flex-wrap"><span className={`tag ${CATEGORY_STYLE[normalizeCategory(event)]}`}>{normalizeCategory(event)}</span>{event.importance==='high'&&<a href={event.importanceSourceUrl} target="_blank" rel="noreferrer" className="tag border-[rgba(248,113,113,0.5)] text-[var(--red)]" title="Investing.com 最高影响">★★★</a>}<strong className="text-[12.5px] font-medium">{event.title}</strong><span className="tag t4">{cd.label}</span></div>{event.note && <p className="mt-1.5 text-[11.5px] t3 leading-relaxed">{event.note}</p>}{event.filterReason && <p className="mt-1 text-[10.5px] t4">过滤依据 · {event.filterReason}</p>}</div>
-          {event.sourceUrl && <a href={event.sourceUrl} target="_blank" rel="noreferrer" className="icon-btn" title="打开来源"><ExternalLink size={12}/></a>}<button className="icon-btn" title="删除" onClick={() => setEvents((prev)=>prev.filter((item)=>item.id!==event.id))}><Trash2 size={12}/></button></div>
+          {event.sourceUrl && <a href={event.sourceUrl} target="_blank" rel="noreferrer" className="icon-btn" title="打开来源"><ExternalLink size={12}/></a>}{!event.id.startsWith('report-')&&!event.id.startsWith('calendar-')&&<button className="icon-btn" title="删除" onClick={() => setEvents((prev)=>prev.filter((item)=>item.id!==event.id))}><Trash2 size={12}/></button>}</div>
         <div className="mt-2 border-l-2 border-[var(--red)] bg-[rgba(248,113,113,0.05)] p-2"><div className="font-mono2 text-[9px] text-[var(--red)] mb-1">AI 建议</div><p className="text-[11.5px] t2 leading-relaxed">{event.aiAdvice || event.evidenceGap || '待补筛选 Prompt 与模型分析'}</p></div>
       </article>})}
     </div>
