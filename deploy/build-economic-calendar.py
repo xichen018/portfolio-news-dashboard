@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 BLS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 BEA_URL = "https://www.bea.gov/news/schedule"
+FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
 IMPORTANT_BLS = re.compile(r"^(Employment Situation|Consumer Price Index|Producer Price Index|Job Openings and Labor Turnover Survey)")
 IMPORTANT_BEA = re.compile(r"(GDP|Personal Income and Outlays|International Trade in Goods and Services)", re.I)
 INVESTING_CALENDAR_URL = "https://www.investing.com/economic-calendar/"
@@ -46,6 +47,24 @@ class BeaParser(HTMLParser):
             self.current[self.field]=" ".join(" ".join(self.buffer).split()); self.field=None
         if self.in_row and tag=="tr": self.rows.append(self.current); self.in_row=False
 
+class FomcParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(); self.year=None; self.capture=None; self.parts=[]; self.month=""; self.meetings=[]
+    def handle_starttag(self,tag,attrs):
+        classes=dict(attrs).get("class","")
+        if tag=="div" and "fomc-meeting__month" in classes: self.capture="month"; self.parts=[]
+        elif tag=="div" and "fomc-meeting__date" in classes: self.capture="date"; self.parts=[]
+    def handle_data(self,data):
+        text=data.strip(); match=re.fullmatch(r"(\d{4}) FOMC Meetings",text)
+        if match: self.year=int(match.group(1))
+        if self.capture and text: self.parts.append(text)
+    def handle_endtag(self,tag):
+        if tag!="div" or not self.capture: return
+        value=" ".join(self.parts).strip()
+        if self.capture=="month": self.month=value
+        elif self.year and self.month: self.meetings.append((self.year,self.month,value))
+        self.capture=None; self.parts=[]
+
 def bls_events(year: int, month: int) -> list[dict]:
     text=fetch(BLS_URL).replace("\r\n ","").replace("\n ",""); events=[]
     for block in text.split("BEGIN:VEVENT")[1:]:
@@ -68,9 +87,21 @@ def bea_events(year: int, month: int) -> list[dict]:
         events.append({"id":f"bea-{eastern:%Y%m%d}-{title}","title_zh":title_zh,"event_at":eastern.astimezone(ZoneInfo("Asia/Hong_Kong")).isoformat(),"original_timezone":"America/New_York","original_time_label":eastern.strftime("%Y-%m-%d %H:%M %Z"),"publisher":"U.S. Bureau of Economic Analysis","source_url":BEA_URL,"importance":investing_importance(title),"importance_publisher":"Investing.com" if investing_importance(title) else None,"importance_source_url":INVESTING_CALENDAR_URL if investing_importance(title) else None})
     return events
 
+def fomc_events(year: int, month: int) -> list[dict]:
+    parser=FomcParser(); parser.feed(fetch(FOMC_URL)); events=[]
+    for event_year,month_name,date_label in parser.meetings:
+        try: event_month=datetime.strptime(month_name.split("/")[0].strip(),"%B").month
+        except ValueError: continue
+        if (event_year,event_month)!=(year,month): continue
+        days=[int(value) for value in re.findall(r"\d+",date_label)]
+        if not days: continue
+        decision_day=max(days); event_date=datetime(year,month,decision_day,tzinfo=ZoneInfo("America/New_York"))
+        events.append({"id":f"fomc-{year}{month:02d}{decision_day:02d}","title_zh":"美联储FOMC利率决议日","event_at":event_date.date().isoformat()+"T00:00:00+08:00","original_timezone":"America/New_York","original_time_label":f"{month_name} {date_label}, {year}（会议日期；声明时间待官方确认）","all_day":True,"publisher":"Federal Reserve Board","source_url":FOMC_URL,"importance":"high","importance_publisher":"Investing.com","importance_source_url":INVESTING_CALENDAR_URL})
+    return events
+
 def main() -> int:
     now=datetime.now(ZoneInfo("Asia/Hong_Kong")); events=[]; errors=[]
-    for provider in (bls_events,bea_events):
+    for provider in (bls_events,bea_events,fomc_events):
         try: events.extend(provider(now.year,now.month))
         except Exception as exc: errors.append(f"{provider.__name__}: {type(exc).__name__}")
     if not events: return 1
