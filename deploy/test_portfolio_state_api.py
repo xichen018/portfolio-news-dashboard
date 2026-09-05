@@ -98,6 +98,7 @@ class StateApiTests(unittest.TestCase):
         self.assertIn("2026-09-03T06:00:00+00:00", calls[0][0][0]["content"])
         self.assertIn("至少具备一项决策价值", calls[0][0][0]["content"])
         self.assertIn("最多保留3条", calls[0][0][0]["content"])
+        self.assertIn("禁止使用“已确认事实”", calls[0][0][0]["content"])
         self.assertEqual(result["remaining_today"], 38)
         self.assertEqual(len(result["summaries"]), 2)
 
@@ -108,6 +109,16 @@ class StateApiTests(unittest.TestCase):
         ):
             result = API.build_x_digest(["account"], now)
         self.assertEqual(result["summaries"][0]["citations"], [])
+
+    def test_x_digest_limits_links_to_selected_items(self) -> None:
+        now = datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc)
+        answer = "account｜香港时间2026-09-04 10:00\n值得关注：增量观点"
+        links = [f"https://x.com/a/status/{index}" for index in range(5)]
+        with patch.object(API, "_consume_chat_quota", return_value=39), patch.object(
+            API, "_call_xai", return_value=(answer, links, {"input_tokens": 1, "output_tokens": 1}),
+        ):
+            result = API.build_x_digest(["account"], now)
+        self.assertEqual(result["summaries"][0]["citations"], links[:1])
 
     def test_extracts_answer_citations_and_usage(self) -> None:
         answer, citations, usage = API._extract_xai_response({
