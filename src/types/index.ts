@@ -31,6 +31,12 @@ export interface CatalystEvent {
   evidenceGap?: string
   importance?: 'high'
   importanceSourceUrl?: string
+  actual?: string
+  consensus?: string
+  previous?: string
+  resultSummary?: string
+  marketImpact?: string
+  resultSourceUrl?: string
   demo?: boolean
 }
 
