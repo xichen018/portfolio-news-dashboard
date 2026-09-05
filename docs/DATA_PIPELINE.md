@@ -28,4 +28,4 @@ AI 只能分析过滤后、带来源的事实。输出必须区分事实、解�
 
 生产环境通过 `deploy/publish-latest-report.sh` 在日报任务成功结束后原子发布最新的 `report_input.json`。前端读取 `/portfolio/data/latest.json`，不直接访问运行目录。
 
-本月财经日历由 `deploy/build-economic-calendar.py` 合并 BLS、BEA、Federal Reserve 官方日程与 Nasdaq Economic Calendar。官方源负责关键发布日期，Nasdaq 补充美国就业、通胀、GDP、PMI/ISM、消费、住房、贸易、联储讲话与能源库存等事件及实际值/预期值/前值；同日同类事件优先保留官方记录。所有时间转换为香港时间，并保留原始时区标签。
+本月财经日历由 `deploy/build-economic-calendar.py` 合并 BLS、BEA、Federal Reserve 官方日程与 Nasdaq Economic Calendar。只保留会直接影响美联储路径、美国增长/衰退判断、核心通胀或消费强弱的事件：FOMC决议/声明/纪要及主席讲话，非农/失业率/平均时薪/ADP/JOLTS，CPI/PPI/核心PCE，GDP，ISM制造业与服务业PMI，零售销售，消费者信心，以及耐用品订单。排除周度失业金、贸易、住房、能源库存、PMI和ISM分项、普通联储官员讲话、国债拍卖及其他二三级数据。同日同类事件优先保留官方记录；所有时间转换为香港时间并保留原始时区标签。

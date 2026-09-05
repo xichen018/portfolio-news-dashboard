@@ -16,19 +16,19 @@ BLS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 BEA_URL = "https://www.bea.gov/news/schedule"
 FOMC_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
 IMPORTANT_BLS = re.compile(r"^(Employment Situation|Consumer Price Index|Producer Price Index|Job Openings and Labor Turnover Survey)")
-IMPORTANT_BEA = re.compile(r"(GDP|Personal Income and Outlays|International Trade in Goods and Services)", re.I)
+IMPORTANT_BEA = re.compile(r"(GDP|Personal Income and Outlays)", re.I)
 INVESTING_CALENDAR_URL = "https://www.investing.com/economic-calendar/"
 NASDAQ_CALENDAR_URL = "https://api.nasdaq.com/api/calendar/economicevents"
 IMPORTANT_NASDAQ = re.compile(
-    r"Payroll|Employment|Unemployment|Jobless Claims|Average Hourly Earnings|CPI|PPI|PCE|GDP|"
-    r"PMI|ISM|Retail Sales|Consumer Confidence|Consumer Sentiment|Durable Goods|Factory Orders|"
-    r"Trade Balance|Existing Home Sales|New Home Sales|Building Permits|Housing Starts|"
-    r"Fed |FOMC|Crude Oil Inventories|Natural Gas Storage",
-    re.I,
-)
-NASDAQ_HIGH = re.compile(
-    r"Nonfarm Payroll|Unemployment Rate|CPI|PPI|PCE Price|GDP|ISM (Manufacturing|Non-Manufacturing) PMI|"
-    r"Retail Sales|Fed Interest Rate Decision|FOMC Statement",
+    r"^(?:Nonfarm Payrolls|Unemployment Rate|Average Hourly Earnings(?: \(YoY\))?|"
+    r"ADP Nonfarm Employment Change|JOLTS Job Openings|"
+    r"(?:Core )?CPI(?: \(MoM\)| \(YoY\))?|(?:Core )?PPI(?: \(MoM\)| \(YoY\))?|"
+    r"Core PCE Price Index(?: \(MoM\)| \(YoY\))?|GDP(?: \(QoQ\))?|"
+    r"ISM Manufacturing PMI|ISM Non-Manufacturing PMI|"
+    r"Retail Sales(?: \(MoM\))?|Core Retail Sales(?: \(MoM\))?|"
+    r"CB Consumer Confidence|Michigan Consumer Sentiment(?: Prel)?|"
+    r"Durable Goods Orders(?: \(MoM\))?|Core Durable Goods Orders(?: \(MoM\))?|"
+    r"Fed Chair Powell (?:Speaks|Testifies)|Fed Interest Rate Decision|FOMC Statement|FOMC Meeting Minutes)$",
     re.I,
 )
 NASDAQ_TITLE_ZH = {
@@ -42,7 +42,22 @@ NASDAQ_TITLE_ZH = {
     "S&P Global Composite PMI": "美国S&P Global综合PMI",
     "S&P Global Services PMI": "美国S&P Global服务业PMI",
     "ISM Non-Manufacturing PMI": "美国ISM非制造业PMI",
-    "ISM Non-Manufacturing Prices": "美国ISM非制造业价格指数",
+    "ISM Manufacturing PMI": "美国ISM制造业PMI",
+    "ADP Nonfarm Employment Change": "美国ADP就业人数",
+    "JOLTS Job Openings": "美国JOLTS职位空缺",
+    "Retail Sales (MoM)": "美国零售销售（月率）",
+    "Retail Sales": "美国零售销售",
+    "Core Retail Sales (MoM)": "美国核心零售销售（月率）",
+    "Core Retail Sales": "美国核心零售销售",
+    "CB Consumer Confidence": "美国谘商会消费者信心",
+    "Michigan Consumer Sentiment": "美国密歇根大学消费者信心",
+    "Michigan Consumer Sentiment Prel": "美国密歇根大学消费者信心初值",
+    "CPI": "美国CPI报告",
+    "Core CPI": "美国核心CPI",
+    "PPI": "美国PPI报告",
+    "Core PPI": "美国核心PPI",
+    "Durable Goods Orders": "美国耐用品订单",
+    "Core Durable Goods Orders": "美国核心耐用品订单",
 }
 TITLE_ZH = {
     "Employment Situation": "美国非农就业报告",
@@ -62,8 +77,8 @@ EVENT_RESULTS = {
 }
 
 def investing_importance(title: str) -> str | None:
-    """Categories Investing.com explicitly describes as highest-impact events."""
-    return "high" if re.search(r"Nonfarm|Employment Situation|GDP|Consumer Price Index|Unemployment", title, re.I) else None
+    """Every retained release passed the dashboard's Investing-style high-impact filter."""
+    return "high"
 
 def add_known_result(event: dict) -> dict:
     result=EVENT_RESULTS.get((event["event_at"][:10],event["title_zh"]))
@@ -162,7 +177,7 @@ def nasdaq_events(year: int, month: int) -> list[dict]:
             event_eastern=datetime(event_day.year,event_day.month,event_day.day,int(time_match.group(1)),int(time_match.group(2)),tzinfo=ZoneInfo("America/New_York"))
             event_hk=event_eastern.astimezone(hong_kong)
             clean=lambda value: " ".join(html.unescape(str(value or "")).replace("\xa0", " ").split()) or None
-            importance="high" if NASDAQ_HIGH.search(title) else None
+            importance="high"
             event={"id":f"nasdaq-{event_day.isoformat()}-{time_match.group(1)}{time_match.group(2)}-{re.sub(r'[^a-z0-9]+','-',title.lower()).strip('-')}","title_zh":NASDAQ_TITLE_ZH.get(title,title),"event_at":event_hk.isoformat(),"original_timezone":"America/New_York","original_time_label":event_eastern.strftime("%Y-%m-%d %H:%M %Z"),"publisher":"Nasdaq Economic Calendar","source_url":f"{NASDAQ_CALENDAR_URL}?date={day.isoformat()}","importance":importance,"importance_publisher":"Investing.com" if importance else None,"importance_source_url":INVESTING_CALENDAR_URL if importance else None,"actual":clean(row.get("actual")),"consensus":clean(row.get("consensus")),"previous":clean(row.get("previous"))}
             day_events.append({key:value for key,value in event.items() if value is not None})
         return day_events
@@ -189,7 +204,15 @@ def merge_events(events: list[dict]) -> list[dict]:
             for key in ("actual","consensus","previous"):
                 if event.get(key) and not duplicate.get(key): duplicate[key]=event[key]
         else: merged.append(event)
-    return merged
+    unique={}
+    for event in merged:
+        key=(event["event_at"],event["title_zh"])
+        if key not in unique:
+            unique[key]=event; continue
+        existing=unique[key]
+        for field in ("actual","consensus","previous"):
+            if existing.get(field) != event.get(field): existing.pop(field,None)
+    return list(unique.values())
 
 def main() -> int:
     now=datetime.now(ZoneInfo("Asia/Hong_Kong")); events=[]; errors=[]
