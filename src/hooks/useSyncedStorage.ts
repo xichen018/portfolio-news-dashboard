@@ -20,7 +20,7 @@ export function useSyncedStorage<T>(key:string,initial:()=>T,clean:(value:T)=>T=
     if(!response.ok)throw new Error(String(response.status))
     const remote=await response.json() as {initialized:boolean;value:T|null}
     if(remote.initialized){const next=cleanRef.current(remote.value as T);setValue(next);window.localStorage.setItem(key,JSON.stringify(next))}
-    else if(migrate){const local=readLocal(key,initialRef.current,cleanRef.current);const saved=await fetch(endpoint,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({value:local})});if(!saved.ok)throw new Error(String(saved.status));setValue(local)}
+    else if(migrate&&window.localStorage.getItem(key)!=null){const local=readLocal(key,initialRef.current,cleanRef.current);const saved=await fetch(endpoint,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({value:local})});if(!saved.ok)throw new Error(String(saved.status));setValue(local)}
     setStatus('synced')
   },[endpoint,key])
 
