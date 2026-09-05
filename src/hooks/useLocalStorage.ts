@@ -34,7 +34,14 @@ export const LS_KEYS = {
   decisionSnapshot: 'cockpit.decision-snapshot.v1',
 }
 
-export const resetAll = () => {
+const SYNCED_KEYS = [LS_KEYS.events,LS_KEYS.news,LS_KEYS.twitter,LS_KEYS.xDigest,LS_KEYS.xChat,LS_KEYS.ideas,LS_KEYS.trades]
+
+export const resetAll = async () => {
+  const responses=await Promise.all([
+    fetch(`${import.meta.env.BASE_URL}api/holdings`,{method:'DELETE'}),
+    ...SYNCED_KEYS.map((key)=>fetch(`${import.meta.env.BASE_URL}api/state/${encodeURIComponent(key)}`,{method:'DELETE'})),
+  ])
+  if(responses.some((response)=>!response.ok))throw new Error('云端数据清理失败')
   Object.values(LS_KEYS).forEach((k) => window.localStorage.removeItem(k))
   window.location.reload()
 }
@@ -60,8 +67,15 @@ export const importAll = async (file: File) => {
   if (parsed.version !== 1 || !parsed.data || typeof parsed.data !== 'object') {
     throw new Error('不支持的备份文件')
   }
-  Object.values(LS_KEYS).forEach((key) => {
-    if (key in parsed.data!) window.localStorage.setItem(key, JSON.stringify(parsed.data![key]))
-  })
+  const uploads=[]
+  for(const key of Object.values(LS_KEYS)){
+    if(!(key in parsed.data))continue
+    const value=parsed.data[key]
+    window.localStorage.setItem(key,JSON.stringify(value))
+    if(key===LS_KEYS.holdings)uploads.push(fetch(`${import.meta.env.BASE_URL}api/holdings`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:value})}))
+    else if(SYNCED_KEYS.includes(key))uploads.push(fetch(`${import.meta.env.BASE_URL}api/state/${encodeURIComponent(key)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({value})}))
+  }
+  const responses=await Promise.all(uploads)
+  if(responses.some((response)=>!response.ok))throw new Error('备份未能完整同步到云端')
   window.location.reload()
 }

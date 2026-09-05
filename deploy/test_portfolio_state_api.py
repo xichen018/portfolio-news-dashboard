@@ -51,6 +51,25 @@ class StateApiTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             API.validate_holdings([{**base, "weight": 101}])
 
+    def test_user_state_round_trip_and_key_allowlist(self) -> None:
+        self.assertEqual(API.read_user_state("cockpit.ideas.v1"), (False, None))
+        value = [{"id": "idea", "title": "test", "nested": [1, True, None]}]
+        API.write_user_state("cockpit.ideas.v1", value)
+        self.assertEqual(API.read_user_state("cockpit.ideas.v1"), (True, value))
+        with self.assertRaises(ValueError):
+            API.write_user_state("cockpit.unknown.v1", {})
+
+    def test_user_state_rejects_excessive_depth(self) -> None:
+        value = "leaf"
+        for _ in range(14):
+            value = [value]
+        with self.assertRaises(ValueError):
+            API.validate_user_state(value)
+
+    def test_state_path_never_accepts_arbitrary_files(self) -> None:
+        with self.assertRaises(ValueError):
+            API.state_path("../../secrets")
+
     def test_validates_bounded_chat_ending_in_user_message(self) -> None:
         messages = API.validate_chat_messages([
             {"role": "user", "content": " BTC 怎么看？ "},

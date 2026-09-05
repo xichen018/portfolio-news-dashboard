@@ -74,7 +74,7 @@ export default function Header({ tradesUsed, tradesLimit, dataStatus, updatedAt 
         title="清空本地修改，恢复示例数据"
         aria-label="恢复示例数据"
         onClick={() => {
-          if (window.confirm('将清空你在本机的全部修改并恢复示例数据，确定？')) resetAll()
+          if (window.confirm('将清空所有设备同步的个人数据，确定？')) resetAll().catch((error:unknown)=>window.alert(error instanceof Error?error.message:'清理失败'))
         }}
       >
         <RotateCcw size={14} />

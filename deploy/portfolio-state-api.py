@@ -16,6 +16,15 @@ DATA_FILE = Path(os.getenv("PORTFOLIO_STATE_FILE", "/var/lib/portfolio-news-dash
 USAGE_FILE = Path(os.getenv("XAI_USAGE_FILE", "/var/lib/portfolio-news-dashboard/xai-usage.json"))
 DIGEST_FILE = Path(os.getenv("XAI_DIGEST_FILE", "/var/lib/portfolio-news-dashboard/x-digest.json"))
 MAX_BODY = 256 * 1024
+STATE_KEYS = {
+    "cockpit.events.v1": "events.json",
+    "cockpit.news.v1": "news.json",
+    "cockpit.twitter.v1": "twitter.json",
+    "cockpit.x-digest.v1": "x-digest-user.json",
+    "cockpit.x-chat.v1": "x-chat.json",
+    "cockpit.ideas.v1": "ideas.json",
+    "cockpit.trades.v1": "trades.json",
+}
 MAX_CHAT_MESSAGES = 20
 MAX_CHAT_CHARS = 24_000
 MAX_DAILY_CHAT_REQUESTS = int(os.getenv("XAI_DAILY_REQUEST_LIMIT", "40"))
@@ -73,6 +82,59 @@ def write_state(holdings: list[dict[str, Any]]) -> None:
             os.fsync(handle.fileno())
         os.replace(temporary, DATA_FILE)
         os.chmod(DATA_FILE, 0o600)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def validate_user_state(value: Any, depth: int = 0) -> Any:
+    if depth > 12:
+        raise ValueError("state is too deeply nested")
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        if len(value) > 24_000:
+            raise ValueError("state string is too large")
+        return value
+    if isinstance(value, list):
+        if len(value) > 500:
+            raise ValueError("state array is too large")
+        return [validate_user_state(item, depth + 1) for item in value]
+    if isinstance(value, dict):
+        if len(value) > 100:
+            raise ValueError("state object is too large")
+        if any(not isinstance(key, str) or len(key) > 100 for key in value):
+            raise ValueError("invalid state key")
+        return {key: validate_user_state(item, depth + 1) for key, item in value.items()}
+    raise ValueError("unsupported state value")
+
+
+def state_path(key: str) -> Path:
+    filename = STATE_KEYS.get(key)
+    if not filename:
+        raise ValueError("unsupported state key")
+    return DATA_FILE.parent / "state" / filename
+
+
+def read_user_state(key: str) -> tuple[bool, Any]:
+    path = state_path(key)
+    if not path.exists():
+        return False, None
+    return True, validate_user_state(json.loads(path.read_text(encoding="utf-8")))
+
+
+def write_user_state(key: str, value: Any) -> None:
+    path = state_path(key)
+    clean = validate_user_state(value)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix="state-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(clean, handle, ensure_ascii=False, separators=(",", ":"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -288,6 +350,15 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
+        if self.path.startswith("/state/"):
+            try:
+                initialized, value = read_user_state(self.path.removeprefix("/state/"))
+                self._json(200, {"initialized": initialized, "value": value})
+            except ValueError:
+                self._json(404, {"error": "not_found"})
+            except Exception:
+                self._json(500, {"error": "state_unavailable"})
+            return
         if self.path not in {"/holdings", "/x-digest"}:
             self._json(404, {"error": "not_found"}); return
         try:
@@ -334,6 +405,22 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": "chat_unavailable"})
 
     def do_PUT(self) -> None:
+        if self.path.startswith("/state/"):
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > MAX_BODY:
+                    raise ValueError("invalid request size")
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict) or set(payload) != {"value"}:
+                    raise ValueError("invalid state payload")
+                key = self.path.removeprefix("/state/")
+                write_user_state(key, payload["value"])
+                self._json(200, {"saved": True})
+            except (ValueError, json.JSONDecodeError):
+                self._json(400, {"error": "invalid_state"})
+            except Exception:
+                self._json(500, {"error": "state_unavailable"})
+            return
         if self.path != "/holdings":
             self._json(404, {"error": "not_found"}); return
         try:
@@ -346,6 +433,20 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"saved": True, "count": len(holdings)})
         except (ValueError, json.JSONDecodeError):
             self._json(400, {"error": "invalid_holdings"})
+        except Exception:
+            self._json(500, {"error": "state_unavailable"})
+
+    def do_DELETE(self) -> None:
+        try:
+            if self.path == "/holdings":
+                DATA_FILE.unlink(missing_ok=True)
+            elif self.path.startswith("/state/"):
+                state_path(self.path.removeprefix("/state/")).unlink(missing_ok=True)
+            else:
+                self._json(404, {"error": "not_found"}); return
+            self._json(200, {"deleted": True})
+        except ValueError:
+            self._json(404, {"error": "not_found"})
         except Exception:
             self._json(500, {"error": "state_unavailable"})
 
