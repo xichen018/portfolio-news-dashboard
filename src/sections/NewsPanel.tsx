@@ -7,15 +7,15 @@ import Panel from './Panel'
 const KINDS: NewsKind[] = ['重大新闻', '重大事项', 'SEC披露']
 const SENT_STYLE: Record<Sentiment,string> = { 利好:'text-[var(--mint)]', 中性:'t3', 风险:'text-[var(--red)]' }
 
-interface Props { news: NewsItem[]; setNews: (fn:(prev:NewsItem[])=>NewsItem[])=>void }
+interface Props { news: NewsItem[]; updatedAt?:string; setNews: (fn:(prev:NewsItem[])=>NewsItem[])=>void }
 
-export default function NewsPanel({news,setNews}:Props) {
+export default function NewsPanel({news,updatedAt,setNews}:Props) {
   const [showForm,setShowForm]=useState(false)
   const [kind,setKind]=useState<'全部'|NewsKind>('全部')
   const [form,setForm]=useState({ticker:'',title:'',source:'',url:'',kind:'重大新闻' as NewsKind,sentiment:'中性' as Sentiment,summary:'',filterReason:'',aiAdvice:''})
   const visible=[...news].filter((item)=>kind==='全部'||(item.kind??'重大新闻')===kind).sort((a,b)=>b.ts-a.ts)
   const save=()=>{if(!form.title.trim()||!form.ticker.trim())return;setNews((prev)=>[...prev,{id:uid(),ticker:form.ticker.trim().toUpperCase(),title:form.title.trim(),source:form.source.trim()||'手动记录',url:form.url.trim()||undefined,kind:form.kind,sentiment:form.sentiment,summary:form.summary.trim()||undefined,filterReason:form.filterReason.trim()||undefined,aiAdvice:form.aiAdvice.trim()||undefined,ts:Date.now()}]);setForm({ticker:'',title:'',source:'',url:'',kind:'重大新闻',sentiment:'中性',summary:'',filterReason:'',aiAdvice:''});setShowForm(false)}
-  return <Panel label="持仓情报 · 新闻 / 事项 / SEC" count={news.length} className="flex-1" actions={<button className="icon-btn" title="记录情报" onClick={()=>setShowForm(!showForm)}><Plus size={13}/></button>}>
+  return <Panel label="持仓情报 · 新闻 / 事项 / SEC" count={news.length} className="flex-1" actions={<div className="flex items-center gap-1.5">{updatedAt&&<span className="font-mono2 text-[9px] t4">扫描 {new Intl.DateTimeFormat('zh-HK',{hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(updatedAt))}</span>}<button className="icon-btn" title="记录情报" onClick={()=>setShowForm(!showForm)}><Plus size={13}/></button></div>}>
     <div className="flex gap-1 mb-2 overflow-x-auto">{(['全部',...KINDS] as const).map((value)=><button key={value} className={`tag ${kind===value?'border-[rgba(34,211,238,.55)] text-[var(--cyan)]':'t4'}`} onClick={()=>setKind(value)}>{value}</button>)}</div>
     {showForm&&<div className="border border-[var(--line)] rounded-sm bg-[var(--bg2)] p-2 mb-2 space-y-1.5">
       <div className="grid grid-cols-3 gap-1.5"><input className="input2 font-mono2" placeholder="代码 *" value={form.ticker} onChange={(e)=>setForm({...form,ticker:e.target.value})}/><select className="input2" value={form.kind} onChange={(e)=>setForm({...form,kind:e.target.value as NewsKind})}>{KINDS.map((x)=><option key={x}>{x}</option>)}</select><select className="input2" value={form.sentiment} onChange={(e)=>setForm({...form,sentiment:e.target.value as Sentiment})}>{(['利好','中性','风险'] as Sentiment[]).map((x)=><option key={x}>{x}</option>)}</select></div>

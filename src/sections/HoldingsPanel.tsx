@@ -132,6 +132,9 @@ export default function HoldingsPanel({ holdings, decisions, setHoldings }: Prop
         {holdings.length === 0 && <div className="empty-state">暂无持仓——点击右上角 + 添加第一笔</div>}
         {holdings.map((h) => {
           const decision=decisions.find((item)=>item.ticker.toUpperCase()===h.ticker.toUpperCase())
+          const longTrendMentioned=/长期趋势|200日/.test(h.invalidation)
+          const aboveLongTrend=Boolean(decision&&/高于[^。]*200日均线|200日均线[^。]*上方/.test(decision.view+decision.evidence.join(' ')))
+          const belowLongTrend=Boolean(decision&&/低于[^。]*200日均线|跌破[^。]*200日均线/.test(decision.view+decision.evidence.join(' ')))
           return (
           <article key={h.id} className="border border-[var(--line)] rounded-sm bg-[var(--bg2)] p-2.5 hover:border-[#26355c] transition-colors">
             <div className="flex items-center gap-2">
@@ -164,6 +167,7 @@ export default function HoldingsPanel({ holdings, decisions, setHoldings }: Prop
                 {h.invalidation}
               </p>
             )}
+            {longTrendMentioned&&decision&&(aboveLongTrend||belowLongTrend)&&<p className={`mt-1 text-[10.5px] border-l-2 pl-2 ${belowLongTrend?'border-[var(--red)] text-[var(--red)]':'border-[var(--mint)] text-[var(--mint)]'}`}>当前状态：{belowLongTrend?'已触发，价格低于200日均线':'未触发，价格仍高于200日均线'}</p>}
             {(h.target || h.stop) && (
               <div className="mt-1.5 space-y-0.5 font-mono2 text-[10px] t3">
                 {h.target && <div>目标 · {h.target}</div>}

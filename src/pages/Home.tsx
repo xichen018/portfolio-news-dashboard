@@ -123,7 +123,7 @@ export default function Home() {
               <CatalystPanel events={events} setEvents={setEvents} />
             </div>
             <div className="flex-1 min-h-[320px] flex">
-              <NewsPanel news={news} setNews={setNews} />
+              <NewsPanel news={news} updatedAt={report.newsUpdatedAt} setNews={setNews} />
             </div>
           </div>
 

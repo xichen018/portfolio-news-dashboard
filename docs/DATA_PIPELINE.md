@@ -7,7 +7,7 @@
 - 宏观信息：FRED、Federal Reserve 官方会议日历。
 - 资金流向与资金成本：FRED 利率与美元序列；资产资金流需要按标的另配来源。
 - 市场估值与潜在风险：Yahoo Chart / Stooq 市场结构；SEC Company Facts 基本面；估值倍数仍需补充可靠来源。
-- 持仓新闻：Google News RSS、GDELT 2.0；Marketaux 可选增强。
+- 持仓新闻：独立扫描器读取服务器持仓，Google News RSS 每30分钟筛选一次重大事项，SEC EDGAR每15分钟扫描一次重大文件；结果保留48小时并原子发布到统一快照。日报新闻作为每日深度分析补充。
 - SEC：SEC Company Facts 适合财务事实，重大文件披露还需要 EDGAR submissions / filings feed。
 - X：面板对话通过 xAI Responses API 的 `x_search` 按需检索，保留响应提供的原帖引用。X 内容属于实时观点线索；公司、监管、宏观和事件事实仍需一级来源确认。API Key 仅由服务端环境文件注入，浏览器不接触密钥；服务端限制消息长度、输出 token 和每日请求次数。
 

@@ -1,0 +1,18 @@
+[Unit]
+Description=Scan portfolio %i updates
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=portfolio-state
+Group=portfolio-state
+Environment=PORTFOLIO_STATE_FILE=/var/lib/portfolio-news-dashboard/holdings.json
+Environment=PORTFOLIO_NEWS_FILE=/var/lib/portfolio-news-dashboard/holdings-news.json
+ExecStart=/usr/local/bin/scan-portfolio-news --source %i
+ExecStartPost=+/usr/bin/install -o www-data -g www-data -m 0644 /var/lib/portfolio-news-dashboard/holdings-news.json /var/www/portfolio-news-dashboard/data/holdings-news.json
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/portfolio-news-dashboard /var/www/portfolio-news-dashboard/data
