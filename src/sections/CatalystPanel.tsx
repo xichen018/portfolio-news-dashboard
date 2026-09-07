@@ -10,6 +10,16 @@ const CATEGORY_STYLE: Record<CatalystCategory, string> = {
   资金流向与资金成本: 'border-[rgba(251,191,36,0.5)] text-[var(--amber)]',
   市场估值与潜在风险: 'border-[rgba(248,113,113,0.5)] text-[var(--red)]',
 }
+const ANALYSIS_STYLE: Record<CatalystCategory,string> = {
+  宏观信息:'border-[var(--cyan)] bg-[rgba(34,211,238,0.05)] text-[var(--cyan)]',
+  资金流向与资金成本:'border-[var(--amber)] bg-[rgba(251,191,36,0.05)] text-[var(--amber)]',
+  市场估值与潜在风险:'border-[var(--red)] bg-[rgba(248,113,113,0.05)] text-[var(--red)]',
+}
+const EMPTY_TEXT: Record<CatalystCategory,string> = {
+  宏观信息:'本月暂无通过重点过滤的宏观事件',
+  资金流向与资金成本:'暂无同时具备来源和变化基准的资金流或资金成本信号',
+  市场估值与潜在风险:'暂无同时具备比较基准的估值或风险信号',
+}
 
 const normalizeCategory = (event: CatalystEvent): CatalystCategory => event.category ?? (
   event.type === '宏观' ? '宏观信息' : event.type === '解禁' ? '资金流向与资金成本' : '市场估值与潜在风险'
@@ -60,11 +70,11 @@ export default function CatalystPanel({ events, setEvents }: Props) {
       <div className="flex gap-1.5"><button className="action-primary flex-1" onClick={save}>保存</button><button className="action-secondary" onClick={() => setShowForm(false)}>取消</button></div>
     </div>}
     <div className="space-y-1.5">
-      {visible.length === 0 && <div className="empty-state">该类别暂无通过过滤的信息</div>}
+      {visible.length === 0 && <div className="empty-state">{EMPTY_TEXT[activeCategory]}</div>}
       {visible.map((event) => { const cd=countdownLabel(event.date); return <article key={event.id} className="border border-[var(--line)] bg-[var(--bg2)] rounded-sm p-2.5">
         <div className="flex gap-2 items-start"><div className="font-mono2 text-[10px] t3 flex-none">{event.date.slice(5)}<br/>{weekdayCN(parseDay(event.date))}</div><div className="min-w-0 flex-1"><div className="flex gap-1.5 items-center flex-wrap"><span className={`tag ${CATEGORY_STYLE[normalizeCategory(event)]}`}>{normalizeCategory(event)}</span>{event.importance==='high'&&<a href={event.importanceSourceUrl} target="_blank" rel="noreferrer" className="tag border-[rgba(248,113,113,0.5)] text-[var(--red)]" title="Investing.com 高影响事件">★★★</a>}<strong className="text-[12.5px] font-medium">{event.title}</strong><span className="tag t4">{cd.label}</span>{event.actual&&<span className="tag text-[var(--mint)]">实际 {event.actual}</span>}{event.consensus&&<span className="tag t3">预期 {event.consensus}</span>}{event.previous&&<span className="tag t4">前值 {event.previous}</span>}</div>{event.note && <p className="mt-1.5 text-[11.5px] t3 leading-relaxed">{event.note}</p>}{event.filterReason && <p className="mt-1 text-[10.5px] t4">过滤依据 · {event.filterReason}</p>}</div>
           {event.sourceUrl && <a href={event.sourceUrl} target="_blank" rel="noreferrer" className="icon-btn" title="打开来源"><ExternalLink size={12}/></a>}{!event.id.startsWith('report-')&&!event.id.startsWith('calendar-')&&<button className="icon-btn" title="删除" onClick={() => setEvents((prev)=>prev.filter((item)=>item.id!==event.id))}><Trash2 size={12}/></button>}</div>
-        <div className="mt-2 border-l-2 border-[var(--red)] bg-[rgba(248,113,113,0.05)] p-2"><div className="font-mono2 text-[9px] text-[var(--red)] mb-1">AI 建议</div><p className="text-[11.5px] t2 leading-relaxed">{event.aiAdvice || event.evidenceGap || '待补筛选 Prompt 与模型分析'}</p></div>
+        <div className={`mt-2 border-l-2 p-2 ${ANALYSIS_STYLE[normalizeCategory(event)]}`}><div className="font-mono2 text-[9px] mb-1">AI 建议</div><p className="text-[11.5px] t2 leading-relaxed">{event.aiAdvice || event.evidenceGap || '待补筛选 Prompt 与模型分析'}</p>{event.evidenceGap&&<p className="mt-1 text-[10px] t4">证据缺口 · {event.evidenceGap}</p>}</div>
       </article>})}
     </div>
   </Panel>
