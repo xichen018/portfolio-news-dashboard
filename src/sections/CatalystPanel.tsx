@@ -3,6 +3,7 @@ import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import type { CatalystCategory, CatalystEvent, EventType } from '@/types'
 import { countdownLabel, currentMonth, dayDiff, parseDay, uid, weekdayCN } from '@/lib/format'
 import Panel from './Panel'
+import type { MarketAnalysisPayload } from '@/hooks/useDailyReport'
 
 const CATEGORIES: CatalystCategory[] = ['宏观信息', '资金流向与资金成本', '市场估值与潜在风险']
 const CATEGORY_STYLE: Record<CatalystCategory, string> = {
@@ -27,10 +28,11 @@ const normalizeCategory = (event: CatalystEvent): CatalystCategory => event.cate
 
 interface Props {
   events: CatalystEvent[]
+  marketAnalysis?: MarketAnalysisPayload
   setEvents: (fn: (prev: CatalystEvent[]) => CatalystEvent[]) => void
 }
 
-export default function CatalystPanel({ events, setEvents }: Props) {
+export default function CatalystPanel({ events, marketAnalysis, setEvents }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [activeCategory, setActiveCategory] = useState<CatalystCategory>('宏观信息')
   const [form, setForm] = useState({ date: '', title: '', note: '', sourceUrl: '', filterReason: '', aiAdvice: '' })
@@ -61,6 +63,7 @@ export default function CatalystPanel({ events, setEvents }: Props) {
         className={`min-h-9 px-1 text-[10px] leading-tight border rounded-sm ${activeCategory === category ? CATEGORY_STYLE[category] + ' bg-[var(--bg2)]' : 'border-[var(--line)] t4'}`}
         onClick={() => setActiveCategory(category)}>{category}</button>)}
     </div>
+    {marketAnalysis?.analyses[activeCategory]&&<div className={`mb-2 border-l-2 p-2 ${ANALYSIS_STYLE[activeCategory]}`}><div className="flex items-center gap-2 font-mono2 text-[9px] mb-1"><span>AI 综合判断</span><span className="t4">{marketAnalysis.model} · {marketAnalysis.analyses[activeCategory].fact_count}项事实</span></div><p className="text-[11px] t2 leading-relaxed whitespace-pre-wrap">{marketAnalysis.analyses[activeCategory].text}</p></div>}
     {showForm && <div className="border border-[var(--line)] rounded-sm bg-[var(--bg2)] p-2 mb-2 space-y-1.5">
       <div className="grid grid-cols-2 gap-1.5"><input className="input2 font-mono2" type="date" value={form.date} onChange={(e) => setForm({...form,date:e.target.value})}/><input className="input2" placeholder="标题 *" value={form.title} onChange={(e) => setForm({...form,title:e.target.value})}/></div>
       <input className="input2" placeholder="来源链接" value={form.sourceUrl} onChange={(e) => setForm({...form,sourceUrl:e.target.value})}/>

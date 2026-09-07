@@ -1,0 +1,12 @@
+[Unit]
+Description=Generate portfolio market AI analysis after daily data refresh
+
+[Timer]
+OnCalendar=*-*-* 08:45:00 Asia/Hong_Kong
+Persistent=true
+AccuracySec=1min
+RandomizedDelaySec=0
+Unit=portfolio-market-analysis.service
+
+[Install]
+WantedBy=timers.target

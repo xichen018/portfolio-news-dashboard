@@ -120,7 +120,7 @@ export default function Home() {
           {/* 中栏：日历 + 新闻 */}
           <div className="lg:col-span-6 flex flex-col gap-2 min-h-0">
             <div className="flex-none max-h-[46%] min-h-[260px] flex">
-              <CatalystPanel events={events} setEvents={setEvents} />
+              <CatalystPanel events={events} marketAnalysis={report.marketAnalysis} setEvents={setEvents} />
             </div>
             <div className="flex-1 min-h-[320px] flex">
               <NewsPanel news={news} updatedAt={report.newsUpdatedAt} setNews={setNews} />

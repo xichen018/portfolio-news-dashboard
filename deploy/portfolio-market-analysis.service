@@ -1,0 +1,19 @@
+[Unit]
+Description=Generate AI analysis for portfolio market monitor
+After=network-online.target daily-report.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=portfolio-state
+Group=portfolio-state
+Environment=XAI_MODEL=grok-4.3
+EnvironmentFile=/home/ubuntu/.config/daily-report/secrets.env
+ExecStart=/usr/local/bin/build-portfolio-market-analysis
+ExecStartPost=+/usr/bin/install -o www-data -g www-data -m 0644 /var/lib/portfolio-news-dashboard/market-analysis.json /var/www/portfolio-news-dashboard/data/market-analysis.json
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/var/www/portfolio-news-dashboard/data/latest.json /var/www/portfolio-news-dashboard/data/monthly-calendar.json
+ReadWritePaths=/var/lib/portfolio-news-dashboard /var/www/portfolio-news-dashboard/data
