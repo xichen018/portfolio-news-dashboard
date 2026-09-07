@@ -12,8 +12,10 @@ from typing import Any
 REPORT_FILE = Path(os.getenv("PORTFOLIO_REPORT_FILE", "/var/www/portfolio-news-dashboard/data/latest.json"))
 CALENDAR_FILE = Path(os.getenv("PORTFOLIO_CALENDAR_FILE", "/var/www/portfolio-news-dashboard/data/monthly-calendar.json"))
 OUTPUT_FILE = Path(os.getenv("PORTFOLIO_MARKET_ANALYSIS_FILE", "/var/lib/portfolio-news-dashboard/market-analysis.json"))
-XAI_URL = "https://api.x.ai/v1/responses"
-XAI_MODEL = os.getenv("XAI_MODEL", "grok-4.3")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+OPENAI_URL = f"{OPENAI_BASE_URL}/responses"
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6-terra")
+OPENAI_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "low")
 
 SYSTEM_PROMPT = """你是服务职业投资者的中文跨资产策略分析师。只能使用输入JSON中的事实，不得使用模型记忆补充当前事实，不得编造数值、共识、因果、资金流、交易阈值或仓位比例。没有前值不得声称指标上升或下降；没有用户风险预算不得提出机械减仓幅度；未来事件的预期不得写成已经发生。明确区分事实、解释和建议。缺少比较基准时写“待补数据”。输出必须紧凑、可执行，不写免责声明、方法说明或工程术语。"""
 
@@ -39,7 +41,7 @@ def extract_text(payload: dict[str, Any]) -> str:
 
 
 def call_model(category: str, facts: list[dict]) -> str:
-    api_key = os.getenv("XAI_API_KEY", "").strip()
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("not_configured")
     user_prompt = f"""{PROMPTS[category]}
@@ -55,8 +57,8 @@ def call_model(category: str, facts: list[dict]) -> str:
 输入JSON：
 {json.dumps(facts, ensure_ascii=False, separators=(',', ':'))}"""
     request = urllib.request.Request(
-        XAI_URL,
-        data=json.dumps({"model": XAI_MODEL, "instructions": SYSTEM_PROMPT, "input": [{"role": "user", "content": user_prompt}], "max_output_tokens": 900, "reasoning": {"effort": "low"}}).encode(),
+        OPENAI_URL,
+        data=json.dumps({"model": OPENAI_MODEL, "instructions": SYSTEM_PROMPT, "input": [{"role": "user", "content": user_prompt}], "max_output_tokens": 900, "reasoning": {"effort": OPENAI_REASONING_EFFORT}, "text": {"verbosity": "low"}}).encode(),
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         method="POST",
     )
@@ -90,7 +92,7 @@ def main() -> int:
             analyses[category] = {"text": "待补数据：本次模型分析未生成，保留上一层结构化事实。", "fact_count": len(facts[category])}
     if successful == 0:
         return 1
-    payload = {"generated_at": datetime.now(timezone.utc).isoformat(), "report_run_id": report.get("run_context", {}).get("run_id"), "model": XAI_MODEL, "analyses": analyses}
+    payload = {"generated_at": datetime.now(timezone.utc).isoformat(), "report_run_id": report.get("run_context", {}).get("run_id"), "provider": "OpenAI", "model": OPENAI_MODEL, "analyses": analyses}
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix="market-analysis-", suffix=".tmp", dir=OUTPUT_FILE.parent)
     try:

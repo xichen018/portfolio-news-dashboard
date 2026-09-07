@@ -7,7 +7,6 @@ Wants=network-online.target
 Type=oneshot
 User=portfolio-state
 Group=portfolio-state
-Environment=XAI_MODEL=grok-4.3
 EnvironmentFile=/home/ubuntu/.config/daily-report/secrets.env
 ExecStart=/usr/local/bin/build-portfolio-market-analysis
 ExecStartPost=+/usr/bin/install -o www-data -g www-data -m 0644 /var/lib/portfolio-news-dashboard/market-analysis.json /var/www/portfolio-news-dashboard/data/market-analysis.json
