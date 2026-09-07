@@ -8,6 +8,7 @@ Type=oneshot
 User=portfolio-state
 Group=portfolio-state
 EnvironmentFile=/home/ubuntu/.config/daily-report/secrets.env
+Environment=PORTFOLIO_STATE_FILE=/var/lib/portfolio-news-dashboard/holdings.json
 ExecStart=/usr/local/bin/build-portfolio-market-analysis
 ExecStartPost=+/usr/bin/install -o www-data -g www-data -m 0644 /var/lib/portfolio-news-dashboard/market-analysis.json /var/www/portfolio-news-dashboard/data/market-analysis.json
 PrivateTmp=true

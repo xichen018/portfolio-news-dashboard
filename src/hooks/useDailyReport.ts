@@ -3,7 +3,7 @@ import { adaptMonthlyCalendar, adaptReport, type MonthlyCalendarPayload, type Re
 import type { NewsItem } from '@/types'
 
 type LiveNewsPayload = { generated_at:string; news:NewsItem[] }
-export type MarketAnalysisPayload = { generated_at:string; report_run_id?:string; provider?:string; model:string; analyses:Record<string,{text:string;fact_count:number}> }
+export type MarketAnalysisPayload = { generated_at:string; report_run_id?:string; provider?:string; model:string; prompt_version?:string; analyses:Record<string,{text:string;fact_count:number}> }
 
 export function useDailyReport(){
   const [state,setState]=useState<{status:'loading'|'ready'|'error';runId?:string;updatedAt?:string;newsUpdatedAt?:string;marketAnalysis?:MarketAnalysisPayload;events:ReturnType<typeof adaptReport>['events'];news:ReturnType<typeof adaptReport>['news'];decisions:ReturnType<typeof adaptReport>['decisions']}>({status:'loading',events:[],news:[],decisions:[]})
