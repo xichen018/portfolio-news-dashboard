@@ -162,7 +162,12 @@ export default function HoldingsPanel({ holdings, decisions, setHoldings }: Prop
               </p>
             )}
             {longTrendMentioned&&decision&&(aboveLongTrend||belowLongTrend)&&<p className={`mt-1.5 text-[11px] border-l-2 pl-2 ${belowLongTrend?'border-[var(--red)] text-[var(--red)]':'border-[var(--mint)] text-[var(--mint)]'}`}><span className="font-mono2 text-[10px] mr-1.5">当前状态</span>{belowLongTrend?'已触发：价格低于200日均线':'未触发：价格仍高于200日均线'}</p>}
-            {h.invalidation && (
+            {longTrendMentioned&&decision&&(aboveLongTrend||belowLongTrend)?(
+              <p className="mt-1.5 text-[12px] leading-relaxed t2 border-l-2 border-[var(--amber)] pl-2">
+                <span className="text-[var(--amber)] font-mono2 text-[10px] uppercase tracking-wider mr-1.5">触发规则</span>
+                日线收盘重新跌破200日均线后，才进入长期趋势失效复核。
+              </p>
+            ):h.invalidation && (
               <p className="mt-1.5 text-[12px] leading-relaxed t2 border-l-2 border-[var(--amber)] pl-2">
                 <span className="text-[var(--amber)] font-mono2 text-[10px] uppercase tracking-wider mr-1.5">失效条件（若发生）</span>
                 {h.invalidation}
