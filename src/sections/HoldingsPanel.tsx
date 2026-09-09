@@ -187,7 +187,7 @@ export default function HoldingsPanel({ holdings, decisions, analyses, analysisU
               </div>
             )}
             <div className="mt-2 border-t border-[var(--line-soft)] pt-2">
-              <div className="font-mono2 text-[9px] text-[var(--cyan)]">AI 决策框架 · 已核验日报</div>
+              <div className="font-mono2 text-[9px] text-[var(--cyan)]">{liveAnalysis?'AI 持仓体检 · 实时行情':'AI 决策框架 · 已核验日报'}</div>
               {liveAnalysis?<p className="mt-1.5 whitespace-pre-line text-[10.5px] t2 leading-relaxed">{liveAnalysis.text}</p>:!decision?<div className="mt-1 text-[10.5px] t4">点击刷新生成基本面与技术面体检</div>:<div className="mt-1.5 space-y-1.5 text-[10.5px] t2 leading-relaxed">
                 {h.weight>=25&&<p className="border-l-2 border-[var(--amber)] pl-2 text-[var(--amber)]">集中度提示：该持仓占组合 {h.weight}%，单一财报或回购事件可能主导组合净值；决策需先定义事件前后的减仓条件。</p>}
                 <p>{decision.view}</p>
