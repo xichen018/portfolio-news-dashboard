@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import threading
 import urllib.error
@@ -33,6 +34,7 @@ XAI_MODEL = os.getenv("XAI_MODEL", "grok-4.3")
 _usage_lock = threading.Lock()
 MARKETS = {"美股", "A股", "港股", "加密", "其他"}
 DIRECTIONS = {"多", "空", "空2x"}
+USER_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 XAI_INSTRUCTIONS = """你是嵌入个人投资工作台的中文研究助手。回答必须简洁、直接并适合职业投资者阅读。
 需要了解X上的实时帖子、账号观点或讨论时使用x_search，并优先引用原帖。明确区分已确认事实、帖子作者观点和你的分析；X帖子不能自动升级为公司、监管或宏观事实。涉及财务、监管、政策或事件日期时，提示需要一级来源确认。不得编造帖子、作者、数字、日期、链接或市场共识。"""
@@ -66,22 +68,38 @@ def validate_holdings(value: Any) -> list[dict[str, Any]]:
     return result
 
 
-def read_state() -> tuple[bool, list[dict[str, Any]]]:
-    if not DATA_FILE.exists():
+def user_root(user: str) -> Path:
+    if not USER_RE.fullmatch(user):
+        raise ValueError("invalid user")
+    return DATA_FILE.parent / "users" / user
+
+
+def holdings_path(user: str) -> Path:
+    return user_root(user) / "holdings.json"
+
+
+def digest_path(user: str) -> Path:
+    return user_root(user) / "x-digest.json"
+
+
+def read_state(user: str) -> tuple[bool, list[dict[str, Any]]]:
+    path = holdings_path(user)
+    if not path.exists():
         return False, []
-    return True, validate_holdings(json.loads(DATA_FILE.read_text(encoding="utf-8")))
+    return True, validate_holdings(json.loads(path.read_text(encoding="utf-8")))
 
 
-def write_state(holdings: list[dict[str, Any]]) -> None:
-    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix="holdings-", suffix=".tmp", dir=DATA_FILE.parent)
+def write_state(user: str, holdings: list[dict[str, Any]]) -> None:
+    path = holdings_path(user)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix="holdings-", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(holdings, handle, ensure_ascii=False, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, DATA_FILE)
-        os.chmod(DATA_FILE, 0o600)
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -109,22 +127,22 @@ def validate_user_state(value: Any, depth: int = 0) -> Any:
     raise ValueError("unsupported state value")
 
 
-def state_path(key: str) -> Path:
+def state_path(user: str, key: str) -> Path:
     filename = STATE_KEYS.get(key)
     if not filename:
         raise ValueError("unsupported state key")
-    return DATA_FILE.parent / "state" / filename
+    return user_root(user) / "state" / filename
 
 
-def read_user_state(key: str) -> tuple[bool, Any]:
-    path = state_path(key)
+def read_user_state(user: str, key: str) -> tuple[bool, Any]:
+    path = state_path(user, key)
     if not path.exists():
         return False, None
     return True, validate_user_state(json.loads(path.read_text(encoding="utf-8")))
 
 
-def write_user_state(key: str, value: Any) -> None:
-    path = state_path(key)
+def write_user_state(user: str, key: str, value: Any) -> None:
+    path = state_path(user, key)
     clean = validate_user_state(value)
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix="state-", suffix=".tmp", dir=path.parent)
@@ -140,25 +158,27 @@ def write_user_state(key: str, value: Any) -> None:
             os.unlink(temporary)
 
 
-def read_x_digest() -> tuple[bool, dict[str, Any]]:
-    if not DIGEST_FILE.exists():
+def read_x_digest(user: str) -> tuple[bool, dict[str, Any]]:
+    path = digest_path(user)
+    if not path.exists():
         return False, {}
-    payload = json.loads(DIGEST_FILE.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict) or not isinstance(payload.get("generated_at"), str) or not isinstance(payload.get("summaries"), list):
         raise ValueError("invalid digest state")
     return True, payload
 
 
-def write_x_digest(payload: dict[str, Any]) -> None:
-    DIGEST_FILE.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix="x-digest-", suffix=".tmp", dir=DIGEST_FILE.parent)
+def write_x_digest(user: str, payload: dict[str, Any]) -> None:
+    path = digest_path(user)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix="x-digest-", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, DIGEST_FILE)
-        os.chmod(DIGEST_FILE, 0o600)
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -340,6 +360,12 @@ X帖子本身不能证明公司、监管、政策或宏观事实，禁止使用�
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _user(self) -> str:
+        user = self.headers.get("X-Portfolio-User", "")
+        if not USER_RE.fullmatch(user):
+            raise ValueError("missing authenticated user")
+        return user
+
     def _json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode()
         self.send_response(status)
@@ -350,9 +376,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
+        try:
+            user = self._user()
+        except ValueError:
+            self._json(401, {"error": "authentication_required"}); return
         if self.path.startswith("/state/"):
             try:
-                initialized, value = read_user_state(self.path.removeprefix("/state/"))
+                initialized, value = read_user_state(user, self.path.removeprefix("/state/"))
                 self._json(200, {"initialized": initialized, "value": value})
             except ValueError:
                 self._json(404, {"error": "not_found"})
@@ -363,15 +393,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not_found"}); return
         try:
             if self.path == "/x-digest":
-                initialized, digest = read_x_digest()
+                initialized, digest = read_x_digest(user)
                 self._json(200, {"initialized": initialized, **digest})
                 return
-            initialized, holdings = read_state()
+            initialized, holdings = read_state(user)
             self._json(200, {"initialized": initialized, "holdings": holdings})
         except Exception:
             self._json(500, {"error": "state_unavailable"})
 
     def do_POST(self) -> None:
+        try:
+            user = self._user()
+        except ValueError:
+            self._json(401, {"error": "authentication_required"}); return
         if self.path not in {"/chat", "/x-digest"}:
             self._json(404, {"error": "not_found"}); return
         try:
@@ -382,7 +416,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/x-digest":
                 handles = validate_x_handles(payload.get("handles") if isinstance(payload, dict) else None)
                 digest = build_x_digest(handles)
-                write_x_digest(digest)
+                write_x_digest(user, digest)
                 self._json(200, digest)
                 return
             messages = validate_chat_messages(payload.get("messages") if isinstance(payload, dict) else None)
@@ -405,6 +439,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": "chat_unavailable"})
 
     def do_PUT(self) -> None:
+        try:
+            user = self._user()
+        except ValueError:
+            self._json(401, {"error": "authentication_required"}); return
         if self.path.startswith("/state/"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -414,7 +452,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(payload, dict) or set(payload) != {"value"}:
                     raise ValueError("invalid state payload")
                 key = self.path.removeprefix("/state/")
-                write_user_state(key, payload["value"])
+                write_user_state(user, key, payload["value"])
                 self._json(200, {"saved": True})
             except (ValueError, json.JSONDecodeError):
                 self._json(400, {"error": "invalid_state"})
@@ -429,7 +467,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("invalid request size")
             payload = json.loads(self.rfile.read(length))
             holdings = validate_holdings(payload.get("holdings") if isinstance(payload, dict) else None)
-            write_state(holdings)
+            write_state(user, holdings)
             self._json(200, {"saved": True, "count": len(holdings)})
         except (ValueError, json.JSONDecodeError):
             self._json(400, {"error": "invalid_holdings"})
@@ -438,10 +476,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         try:
+            user = self._user()
             if self.path == "/holdings":
-                DATA_FILE.unlink(missing_ok=True)
+                holdings_path(user).unlink(missing_ok=True)
             elif self.path.startswith("/state/"):
-                state_path(self.path.removeprefix("/state/")).unlink(missing_ok=True)
+                state_path(user, self.path.removeprefix("/state/")).unlink(missing_ok=True)
             else:
                 self._json(404, {"error": "not_found"}); return
             self._json(200, {"deleted": True})

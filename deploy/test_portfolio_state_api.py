@@ -15,6 +15,8 @@ SPEC.loader.exec_module(API)
 
 
 class StateApiTests(unittest.TestCase):
+    USER = "laicai"
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         API.DATA_FILE = Path(self.temp.name) / "holdings.json"
@@ -25,24 +27,24 @@ class StateApiTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_round_trip_and_initialization(self) -> None:
-        self.assertEqual(API.read_state(), (False, []))
+        self.assertEqual(API.read_state(self.USER), (False, []))
         holdings = API.validate_holdings([{
             "id": "one", "ticker": "GOOG", "name": "Alphabet", "market": "美股",
             "direction": "多", "weight": 12.5, "thesis": "test", "invalidation": "test",
         }])
-        API.write_state(holdings)
-        self.assertEqual(API.read_state(), (True, holdings))
+        API.write_state(self.USER, holdings)
+        self.assertEqual(API.read_state(self.USER), (True, holdings))
 
     def test_x_digest_round_trip_and_initialization(self) -> None:
-        self.assertEqual(API.read_x_digest(), (False, {}))
+        self.assertEqual(API.read_x_digest(self.USER), (False, {}))
         digest = {
             "generated_at": "2026-09-04T12:00:00+00:00",
             "window_start": "2026-09-03T06:00:00+00:00",
             "summaries": [{"handles": ["xai"], "summary": "无重大新增", "citations": []}],
             "remaining_today": 38,
         }
-        API.write_x_digest(digest)
-        self.assertEqual(API.read_x_digest(), (True, digest))
+        API.write_x_digest(self.USER, digest)
+        self.assertEqual(API.read_x_digest(self.USER), (True, digest))
 
     def test_rejects_unknown_fields_and_invalid_weight(self) -> None:
         base = {"id": "one", "ticker": "GOOG", "name": "Alphabet", "market": "美股", "direction": "多", "weight": 10, "thesis": "", "invalidation": ""}
@@ -52,12 +54,12 @@ class StateApiTests(unittest.TestCase):
             API.validate_holdings([{**base, "weight": 101}])
 
     def test_user_state_round_trip_and_key_allowlist(self) -> None:
-        self.assertEqual(API.read_user_state("cockpit.ideas.v1"), (False, None))
+        self.assertEqual(API.read_user_state(self.USER, "cockpit.ideas.v1"), (False, None))
         value = [{"id": "idea", "title": "test", "nested": [1, True, None]}]
-        API.write_user_state("cockpit.ideas.v1", value)
-        self.assertEqual(API.read_user_state("cockpit.ideas.v1"), (True, value))
+        API.write_user_state(self.USER, "cockpit.ideas.v1", value)
+        self.assertEqual(API.read_user_state(self.USER, "cockpit.ideas.v1"), (True, value))
         with self.assertRaises(ValueError):
-            API.write_user_state("cockpit.unknown.v1", {})
+            API.write_user_state(self.USER, "cockpit.unknown.v1", {})
 
     def test_user_state_rejects_excessive_depth(self) -> None:
         value = "leaf"
@@ -68,7 +70,23 @@ class StateApiTests(unittest.TestCase):
 
     def test_state_path_never_accepts_arbitrary_files(self) -> None:
         with self.assertRaises(ValueError):
-            API.state_path("../../secrets")
+            API.state_path(self.USER, "../../secrets")
+
+    def test_users_have_isolated_state(self) -> None:
+        first = [{"id": "one", "ticker": "MU", "name": "Micron", "market": "美股", "direction": "多", "weight": 10, "thesis": "one", "invalidation": "one"}]
+        second = [{"id": "two", "ticker": "BTC", "name": "Bitcoin", "market": "加密", "direction": "多", "weight": 5, "thesis": "two", "invalidation": "two"}]
+        API.write_state("laicai", first)
+        API.write_state("second", second)
+        API.write_user_state("laicai", "cockpit.ideas.v1", ["first"])
+        API.write_user_state("second", "cockpit.ideas.v1", ["second"])
+        self.assertEqual(API.read_state("laicai"), (True, first))
+        self.assertEqual(API.read_state("second"), (True, second))
+        self.assertEqual(API.read_user_state("laicai", "cockpit.ideas.v1"), (True, ["first"]))
+        self.assertEqual(API.read_user_state("second", "cockpit.ideas.v1"), (True, ["second"]))
+
+    def test_rejects_invalid_user_names(self) -> None:
+        with self.assertRaises(ValueError):
+            API.user_root("../../root")
 
     def test_validates_bounded_chat_ending_in_user_message(self) -> None:
         messages = API.validate_chat_messages([
