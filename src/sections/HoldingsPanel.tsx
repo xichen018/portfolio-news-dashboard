@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { Direction, Holding, PMDecision } from '@/types'
 import { uid } from '@/lib/format'
 import Panel from './Panel'
+import { RefreshCw } from 'lucide-react'
+import type { HoldingAnalysis } from '@/hooks/useHoldingAnalysis'
 
 const DIR_STYLE: Record<Direction, string> = {
   多: 'border-[rgba(34,211,238,0.5)] text-[var(--cyan)]',
@@ -25,10 +27,14 @@ const emptyForm = {
 interface Props {
   holdings: Holding[]
   decisions: PMDecision[]
+  analyses: HoldingAnalysis[]
+  analysisUpdatedAt?: string
+  analysisRefreshing: boolean
+  refreshAnalysis: () => Promise<void>
   setHoldings: (fn: (prev: Holding[]) => Holding[]) => void
 }
 
-export default function HoldingsPanel({ holdings, decisions, setHoldings }: Props) {
+export default function HoldingsPanel({ holdings, decisions, analyses, analysisUpdatedAt, analysisRefreshing, refreshAnalysis, setHoldings }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -83,11 +89,11 @@ export default function HoldingsPanel({ holdings, decisions, setHoldings }: Prop
       count={holdings.length}
       className="h-full"
       actions={
-        <button className="icon-btn" title="添加持仓" onClick={() => { setShowForm(!showForm); setEditingId(null); setForm(emptyForm) }}>
+        <div className="flex items-center gap-1">{analysisUpdatedAt&&<span className="font-mono2 text-[9px] t4">体检 {new Intl.DateTimeFormat('zh-HK',{hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(analysisUpdatedAt))}</span>}<button className="icon-btn" title="刷新持仓体检" aria-label="刷新持仓体检" disabled={analysisRefreshing} onClick={()=>void refreshAnalysis().catch(()=>window.alert('持仓体检生成失败'))}><RefreshCw size={13} className={analysisRefreshing?'animate-spin':''}/></button><button className="icon-btn" title="添加持仓" onClick={() => { setShowForm(!showForm); setEditingId(null); setForm(emptyForm) }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" />
           </svg>
-        </button>
+        </button></div>
       }
     >
       {/* 总仓位 */}
@@ -132,6 +138,7 @@ export default function HoldingsPanel({ holdings, decisions, setHoldings }: Prop
         {holdings.length === 0 && <div className="empty-state">暂无持仓——点击右上角 + 添加第一笔</div>}
         {holdings.map((h) => {
           const decision=decisions.find((item)=>item.ticker.toUpperCase()===h.ticker.toUpperCase())
+          const liveAnalysis=analyses.find((item)=>item.ticker.toUpperCase()===h.ticker.toUpperCase())
           const longTrendMentioned=/长期趋势|200日/.test(h.invalidation)
           const aboveLongTrend=Boolean(decision&&/高于[^。]*200日均线|200日均线[^。]*上方/.test(decision.view+decision.evidence.join(' ')))
           const belowLongTrend=Boolean(decision&&/低于[^。]*200日均线|跌破[^。]*200日均线/.test(decision.view+decision.evidence.join(' ')))
@@ -181,7 +188,7 @@ export default function HoldingsPanel({ holdings, decisions, setHoldings }: Prop
             )}
             <div className="mt-2 border-t border-[var(--line-soft)] pt-2">
               <div className="font-mono2 text-[9px] text-[var(--cyan)]">AI 决策框架 · 已核验日报</div>
-              {!decision?<div className="mt-1 text-[10.5px] t4">待补数据</div>:<div className="mt-1.5 space-y-1.5 text-[10.5px] t2 leading-relaxed">
+              {liveAnalysis?<p className="mt-1.5 whitespace-pre-line text-[10.5px] t2 leading-relaxed">{liveAnalysis.text}</p>:!decision?<div className="mt-1 text-[10.5px] t4">点击刷新生成基本面与技术面体检</div>:<div className="mt-1.5 space-y-1.5 text-[10.5px] t2 leading-relaxed">
                 {h.weight>=25&&<p className="border-l-2 border-[var(--amber)] pl-2 text-[var(--amber)]">集中度提示：该持仓占组合 {h.weight}%，单一财报或回购事件可能主导组合净值；决策需先定义事件前后的减仓条件。</p>}
                 <p>{decision.view}</p>
                 {decision.evidence.length>0&&<p><span className="t4">证据：</span>{decision.evidence.join('；')}</p>}

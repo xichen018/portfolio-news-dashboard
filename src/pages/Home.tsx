@@ -14,6 +14,7 @@ import { countdownLabel, currentMonth, uid } from '@/lib/format'
 import { useDailyReport } from '@/hooks/useDailyReport'
 import { usePersistentHoldings } from '@/hooks/usePersistentHoldings'
 import { useSyncedStorage } from '@/hooks/useSyncedStorage'
+import { useHoldingAnalysis } from '@/hooks/useHoldingAnalysis'
 import type { CatalystEvent, Idea, NewsItem, ReportChange, TradeCounter, TwitterAccount, XChatMessage, XDigestItem } from '@/types'
 
 const manualEventsOnly=(items:CatalystEvent[])=>items.filter((item)=>!item.demo&&!item.id.startsWith('report-')&&!item.id.startsWith('calendar-'))
@@ -31,6 +32,7 @@ export default function Home({user,onLogout}:{user:string;onLogout:()=>Promise<v
   const [decisionSnapshot, setDecisionSnapshot] = useLocalStorage<{runId:string;views:Record<string,string>}>(LS_KEYS.decisionSnapshot,()=>({runId:'',views:{}}))
   const [reportChanges,setReportChanges]=useState<ReportChange[]>([])
   const report = useDailyReport()
+  const holdingAnalysis=useHoldingAnalysis()
   const manualEvents=storedEvents.filter((item)=>!item.demo&&!item.id.startsWith('report-')&&!item.id.startsWith('calendar-'))
   const events=[...manualEvents,...report.events]
   const setEvents=(update:(previous:CatalystEvent[])=>CatalystEvent[])=>setStoredEvents((previous)=>update(previous.filter((item)=>!item.demo&&!item.id.startsWith('report-')&&!item.id.startsWith('calendar-'))))
@@ -114,7 +116,7 @@ export default function Home({user,onLogout}:{user:string;onLogout:()=>Promise<v
           {/* 左栏：持仓 */}
           <div className="lg:col-span-3 min-h-[420px] lg:min-h-0 flex flex-col gap-2">
             <div className="flex-none"><PortfolioRiskPanel holdings={holdings} changes={reportChanges} portfolioImplications={report.decisions.map((item)=>item.portfolioImplication||'')} /></div>
-            <div className="flex-1 min-h-[300px] flex"><HoldingsPanel holdings={holdings} decisions={report.decisions} setHoldings={setHoldings} /></div>
+            <div className="flex-1 min-h-[300px] flex"><HoldingsPanel holdings={holdings} decisions={report.decisions} analyses={holdingAnalysis.analyses} analysisUpdatedAt={holdingAnalysis.updatedAt} analysisRefreshing={holdingAnalysis.refreshing} refreshAnalysis={holdingAnalysis.refresh} setHoldings={setHoldings} /></div>
           </div>
 
           {/* 中栏：日历 + 新闻 */}

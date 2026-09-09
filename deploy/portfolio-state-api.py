@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -36,6 +37,8 @@ MAX_CHAT_CHARS = 24_000
 MAX_DAILY_CHAT_REQUESTS = int(os.getenv("XAI_DAILY_REQUEST_LIMIT", "40"))
 XAI_URL = "https://api.x.ai/v1/responses"
 XAI_MODEL = os.getenv("XAI_MODEL", "grok-4.3")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.6-terra")
 _usage_lock = threading.Lock()
 MARKETS = {"美股", "A股", "港股", "加密", "其他"}
 DIRECTIONS = {"多", "空", "空2x"}
@@ -93,6 +96,91 @@ def digest_path(user: str) -> Path:
 
 def news_path(user: str) -> Path:
     return user_root(user) / "holdings-news.json"
+
+
+def analysis_path(user: str) -> Path:
+    return user_root(user) / "holding-analysis.json"
+
+
+def yahoo_symbol(holding: dict[str, Any]) -> str:
+    ticker = holding["ticker"].upper()
+    if holding["market"] == "港股":
+        return f"{ticker.lstrip('0') or '0'}.HK"
+    if holding["market"] == "加密" and ticker == "BTC":
+        return "BTC-USD"
+    return ticker
+
+
+def technical_facts(holding: dict[str, Any]) -> dict[str, Any]:
+    symbol = yahoo_symbol(holding)
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?range=1y&interval=1d"
+    request = urllib.request.Request(url, headers={"User-Agent": "portfolio-news-dashboard/1.0"})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        result = json.loads(response.read())["chart"]["result"][0]
+    quotes = result["indicators"]["quote"][0]
+    closes = [float(value) for value in quotes.get("close", []) if isinstance(value, (int, float))]
+    volumes = [float(value) for value in quotes.get("volume", []) if isinstance(value, (int, float))]
+    if len(closes) < 15:
+        raise ValueError("insufficient price history")
+    def sma(days: int) -> float | None:
+        return round(sum(closes[-days:]) / days, 4) if len(closes) >= days else None
+    changes = [closes[index] - closes[index - 1] for index in range(1, len(closes))][-14:]
+    gains = sum(max(value, 0) for value in changes) / 14
+    losses = sum(max(-value, 0) for value in changes) / 14
+    rsi = 100 if losses == 0 else 100 - 100 / (1 + gains / losses)
+    return {"symbol": symbol, "name": result.get("meta", {}).get("shortName"), "instrument_type": result.get("meta", {}).get("instrumentType"), "currency": result.get("meta", {}).get("currency"), "price": round(closes[-1], 4), "observations": len(closes), "sma20": sma(20), "sma50": sma(50), "sma200": sma(200), "rsi14": round(rsi, 2), "return_20d_pct": round((closes[-1] / closes[-21] - 1) * 100, 2) if len(closes) >= 21 else None, "volume_vs_20d": round(volumes[-1] / (sum(volumes[-20:]) / 20), 2) if len(volumes) >= 20 and sum(volumes[-20:]) else None, "source_url": url}
+
+
+def holding_analysis_prompt(holding: dict[str, Any], facts: dict[str, Any]) -> str:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("not_configured")
+    instructions = """你是职业投资者的持仓研究助手。只能使用输入JSON事实，不得用记忆补当前基本面、估值、新闻或价格。先识别股票或ETF：ETF不得套用公司财务分析，必须说明底层资产、跟踪、汇率与再平衡数据缺口。技术面至少结合趋势、动量、区间或量价中的两项；历史不足200个交易日时不得判断200日均线。技术指标不能证明基本面变化。用户论点为空时不得代写。输出紧凑中文，缺失证据写待补数据。"""
+    prompt = """按以下格式输出：
+标的类型：
+证据等级：强 / 中 / 弱 / 不可判断
+结论：
+基本面：
+技术结构：
+主要催化剂：
+主要风险：
+持仓论点：
+市场可能已计价：
+决策点：
+失效条件：
+证据缺口：
+
+输入JSON：""" + json.dumps({"holding": holding, "technical_facts": facts, "fundamental_facts": []}, ensure_ascii=False, separators=(",", ":"))
+    request = urllib.request.Request(f"{OPENAI_BASE_URL}/responses", data=json.dumps({"model": OPENAI_MODEL, "instructions": instructions, "input": prompt, "max_output_tokens": 700, "reasoning": {"effort": "low"}, "text": {"verbosity": "low"}}).encode(), headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(request, timeout=120) as response:
+        payload = json.loads(response.read())
+    parts = [content.get("text", "").strip() for output in payload.get("output", []) if output.get("type") == "message" for content in output.get("content", []) if content.get("type") == "output_text"]
+    text = "\n".join(part for part in parts if part)
+    if not text:
+        raise RuntimeError("empty_response")
+    return text
+
+
+def refresh_holding_analysis(user: str) -> dict[str, Any]:
+    holdings = read_state(user)[1]
+    analyses = []
+    for holding in holdings:
+        try:
+            facts = technical_facts(holding)
+            text = holding_analysis_prompt(holding, facts)
+            analyses.append({"ticker": holding["ticker"], "text": text, "technical_facts": facts})
+        except Exception:
+            analyses.append({"ticker": holding["ticker"], "text": "待补数据：本次行情或模型分析未生成。", "technical_facts": {}})
+    payload = {"generated_at": datetime.now(timezone.utc).isoformat(), "model": OPENAI_MODEL, "analyses": analyses}
+    path = analysis_path(user); path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix="holding-analysis-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2); handle.flush(); os.fsync(handle.fileno())
+        os.replace(temporary, path); os.chmod(path, 0o600)
+    finally:
+        if os.path.exists(temporary): os.unlink(temporary)
+    return payload
 
 
 def read_holdings_news(user: str) -> dict[str, Any]:
@@ -467,6 +555,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 self._json(500, {"error": "news_unavailable"})
             return
+        if self.path == "/holding-analysis":
+            try:
+                path = analysis_path(user)
+                payload = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"generated_at": None, "analyses": []}
+                self._json(200, payload)
+            except Exception:
+                self._json(500, {"error": "analysis_unavailable"})
+            return
         if self.path.startswith("/state/"):
             try:
                 initialized, value = read_user_state(user, self.path.removeprefix("/state/"))
@@ -518,6 +614,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, refresh_holdings_news(user))
             except (subprocess.SubprocessError, OSError, ValueError):
                 self._json(502, {"error": "news_refresh_failed"})
+            return
+        if self.path == "/holding-analysis/refresh":
+            try:
+                self._json(200, refresh_holding_analysis(user))
+            except Exception:
+                self._json(502, {"error": "analysis_refresh_failed"})
             return
         if self.path not in {"/chat", "/x-digest"}:
             self._json(404, {"error": "not_found"}); return
