@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import { pad, weekdayCN } from '@/lib/format'
 import { exportAll, importAll, resetAll } from '@/hooks/useLocalStorage'
-import { Download, RotateCcw, Upload } from 'lucide-react'
+import { Download, LogOut, RotateCcw, Upload, UserRound } from 'lucide-react'
 
 interface HeaderProps {
+  user: string
+  onLogout: () => Promise<void>
   tradesUsed: number
   tradesLimit: number
   dataStatus: 'loading' | 'ready' | 'error'
   updatedAt?: string
 }
 
-export default function Header({ tradesUsed, tradesLimit, dataStatus, updatedAt }: HeaderProps) {
+export default function Header({ user, onLogout, tradesUsed, tradesLimit, dataStatus, updatedAt }: HeaderProps) {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
@@ -79,6 +81,8 @@ export default function Header({ tradesUsed, tradesLimit, dataStatus, updatedAt 
       >
         <RotateCcw size={14} />
       </button>
+      <span className="hidden sm:inline-flex items-center gap-1.5 tag t2" title="当前登录账户"><UserRound size={12}/>{user}</span>
+      <button className="icon-btn flex-none" title="退出登录" aria-label="退出登录" onClick={()=>void onLogout()}><LogOut size={14}/></button>
     </header>
   )
 }

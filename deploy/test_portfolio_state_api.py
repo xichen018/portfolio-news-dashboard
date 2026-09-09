@@ -22,6 +22,7 @@ class StateApiTests(unittest.TestCase):
         API.DATA_FILE = Path(self.temp.name) / "holdings.json"
         API.USAGE_FILE = Path(self.temp.name) / "usage.json"
         API.DIGEST_FILE = Path(self.temp.name) / "x-digest.json"
+        API.SESSION_SECRET_FILE = Path(self.temp.name) / "session-secret"
 
     def tearDown(self) -> None:
         self.temp.cleanup()
@@ -87,6 +88,15 @@ class StateApiTests(unittest.TestCase):
     def test_rejects_invalid_user_names(self) -> None:
         with self.assertRaises(ValueError):
             API.user_root("../../root")
+
+    def test_signed_session_round_trip_and_expiry(self) -> None:
+        now = datetime(2026, 9, 9, tzinfo=timezone.utc)
+        token = API.create_session("laicai", now)
+        self.assertEqual(API.session_user(token, now), "laicai")
+        with self.assertRaises(ValueError):
+            API.session_user(token + "x", now)
+        with self.assertRaises(ValueError):
+            API.session_user(token, datetime(2026, 9, 20, tzinfo=timezone.utc))
 
     def test_validates_bounded_chat_ending_in_user_message(self) -> None:
         messages = API.validate_chat_messages([

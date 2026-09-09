@@ -4,6 +4,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import crypt
+import hashlib
+import hmac
+import secrets
 import tempfile
 import threading
 import urllib.error
@@ -35,6 +39,9 @@ _usage_lock = threading.Lock()
 MARKETS = {"美股", "A股", "港股", "加密", "其他"}
 DIRECTIONS = {"多", "空", "空2x"}
 USER_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+AUTH_FILE = Path(os.getenv("PORTFOLIO_AUTH_FILE", "/etc/nginx/portfolio-dashboard.htpasswd"))
+SESSION_SECRET_FILE = Path(os.getenv("PORTFOLIO_SESSION_SECRET_FILE", DATA_FILE.parent / "session-secret"))
+SESSION_SECONDS = 7 * 24 * 60 * 60
 
 XAI_INSTRUCTIONS = """你是嵌入个人投资工作台的中文研究助手。回答必须简洁、直接并适合职业投资者阅读。
 需要了解X上的实时帖子、账号观点或讨论时使用x_search，并优先引用原帖。明确区分已确认事实、帖子作者观点和你的分析；X帖子不能自动升级为公司、监管或宏观事实。涉及财务、监管、政策或事件日期时，提示需要一级来源确认。不得编造帖子、作者、数字、日期、链接或市场共识。"""
@@ -80,6 +87,47 @@ def holdings_path(user: str) -> Path:
 
 def digest_path(user: str) -> Path:
     return user_root(user) / "x-digest.json"
+
+
+def _session_secret() -> bytes:
+    if not SESSION_SECRET_FILE.exists():
+        SESSION_SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SESSION_SECRET_FILE.write_text(secrets.token_hex(32), encoding="ascii")
+        os.chmod(SESSION_SECRET_FILE, 0o600)
+    return SESSION_SECRET_FILE.read_text(encoding="ascii").strip().encode()
+
+
+def create_session(user: str, now: datetime | None = None) -> str:
+    user_root(user)
+    expires = int((now or datetime.now(timezone.utc)).timestamp()) + SESSION_SECONDS
+    payload = f"{user}|{expires}"
+    signature = hmac.new(_session_secret(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}|{signature}"
+
+
+def session_user(token: str, now: datetime | None = None) -> str:
+    try:
+        user, expires_text, signature = token.split("|", 2)
+        expires = int(expires_text)
+    except (ValueError, TypeError):
+        raise ValueError("invalid session")
+    user_root(user)
+    payload = f"{user}|{expires}"
+    expected = hmac.new(_session_secret(), payload.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected) or expires < int((now or datetime.now(timezone.utc)).timestamp()):
+        raise ValueError("invalid session")
+    return user
+
+
+def verify_password(user: str, password: str) -> bool:
+    if not USER_RE.fullmatch(user) or not password or len(password) > 1024:
+        return False
+    try:
+        entries = AUTH_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    encoded = next((line.split(":", 1)[1] for line in entries if line.startswith(f"{user}:") and ":" in line), None)
+    return bool(encoded and hmac.compare_digest(crypt.crypt(password, encoded), encoded))
 
 
 def read_state(user: str) -> tuple[bool, list[dict[str, Any]]]:
@@ -361,10 +409,12 @@ X帖子本身不能证明公司、监管、政策或宏观事实，禁止使用�
 
 class Handler(BaseHTTPRequestHandler):
     def _user(self) -> str:
-        user = self.headers.get("X-Portfolio-User", "")
-        if not USER_RE.fullmatch(user):
-            raise ValueError("missing authenticated user")
-        return user
+        cookies = self.headers.get("Cookie", "")
+        token = next((item.split("=", 1)[1] for item in cookies.split(";") if item.strip().startswith("portfolio_session=")), "")
+        return session_user(token.strip())
+
+    def _cookie(self, value: str, max_age: int) -> None:
+        self.send_header("Set-Cookie", f"portfolio_session={value}; Path=/portfolio; HttpOnly; SameSite=Strict; Max-Age={max_age}")
 
     def _json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -380,6 +430,10 @@ class Handler(BaseHTTPRequestHandler):
             user = self._user()
         except ValueError:
             self._json(401, {"error": "authentication_required"}); return
+        if self.path == "/auth/session":
+            self._json(200, {"authenticated": True, "user": user}); return
+        if self.path == "/auth/check":
+            self._json(200, {"authenticated": True}); return
         if self.path.startswith("/state/"):
             try:
                 initialized, value = read_user_state(user, self.path.removeprefix("/state/"))
@@ -402,6 +456,26 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": "state_unavailable"})
 
     def do_POST(self) -> None:
+        if self.path == "/auth/session":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 4096:
+                    raise ValueError("invalid request size")
+                payload = json.loads(self.rfile.read(length))
+                user, password = payload.get("user"), payload.get("password")
+                if not isinstance(user, str) or not isinstance(password, str) or not verify_password(user, password):
+                    self._json(401, {"error": "invalid_credentials"}); return
+                token = create_session(user)
+                body = json.dumps({"authenticated": True, "user": user}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self._cookie(token, SESSION_SECONDS)
+                self.end_headers(); self.wfile.write(body)
+            except (ValueError, json.JSONDecodeError):
+                self._json(400, {"error": "invalid_request"})
+            return
         try:
             user = self._user()
         except ValueError:
@@ -475,6 +549,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": "state_unavailable"})
 
     def do_DELETE(self) -> None:
+        if self.path == "/auth/session":
+            body = b'{"authenticated":false}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self._cookie("", 0)
+            self.end_headers(); self.wfile.write(body)
+            return
         try:
             user = self._user()
             if self.path == "/holdings":

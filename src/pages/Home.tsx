@@ -19,7 +19,7 @@ import type { CatalystEvent, Idea, NewsItem, ReportChange, TradeCounter, Twitter
 const manualEventsOnly=(items:CatalystEvent[])=>items.filter((item)=>!item.demo&&!item.id.startsWith('report-')&&!item.id.startsWith('calendar-'))
 const manualNewsOnly=(items:NewsItem[])=>items.filter((item)=>!item.demo&&!item.id.startsWith('report-news-'))
 
-export default function Home() {
+export default function Home({user,onLogout}:{user:string;onLogout:()=>Promise<void>}) {
   const [holdings, setHoldings, holdingsSync] = usePersistentHoldings(seedHoldings)
   const [storedEvents, setStoredEvents,eventsSync] = useSyncedStorage<CatalystEvent[]>(LS_KEYS.events, seedEvents,manualEventsOnly)
   const [storedNews,setStoredNews,newsSync]=useSyncedStorage<NewsItem[]>(LS_KEYS.news,seedNews,manualNewsOnly)
@@ -105,7 +105,7 @@ export default function Home() {
 
   return (
     <div className="scanlines min-h-screen bg-[var(--bg0)]">
-      <Header tradesUsed={trades.used} tradesLimit={trades.limit} dataStatus={report.status} updatedAt={report.updatedAt} />
+      <Header user={user} onLogout={onLogout} tradesUsed={trades.used} tradesLimit={trades.limit} dataStatus={report.status} updatedAt={report.updatedAt} />
 
       <div className="pt-12">
         <TickerBanner items={marqueeItems.length > 0 ? marqueeItems : ['暂无数据']} />
