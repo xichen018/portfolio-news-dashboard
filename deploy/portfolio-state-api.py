@@ -8,6 +8,7 @@ import crypt
 import hashlib
 import hmac
 import secrets
+import subprocess
 import tempfile
 import threading
 import urllib.error
@@ -42,6 +43,7 @@ USER_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 AUTH_FILE = Path(os.getenv("PORTFOLIO_AUTH_FILE", "/etc/nginx/portfolio-dashboard.htpasswd"))
 SESSION_SECRET_FILE = Path(os.getenv("PORTFOLIO_SESSION_SECRET_FILE", DATA_FILE.parent / "session-secret"))
 SESSION_SECONDS = 7 * 24 * 60 * 60
+NEWS_SCANNER = os.getenv("PORTFOLIO_NEWS_SCANNER", "/usr/local/bin/scan-portfolio-news")
 
 XAI_INSTRUCTIONS = """你是嵌入个人投资工作台的中文研究助手。回答必须简洁、直接并适合职业投资者阅读。
 需要了解X上的实时帖子、账号观点或讨论时使用x_search，并优先引用原帖。明确区分已确认事实、帖子作者观点和你的分析；X帖子不能自动升级为公司、监管或宏观事实。涉及财务、监管、政策或事件日期时，提示需要一级来源确认。不得编造帖子、作者、数字、日期、链接或市场共识。"""
@@ -87,6 +89,31 @@ def holdings_path(user: str) -> Path:
 
 def digest_path(user: str) -> Path:
     return user_root(user) / "x-digest.json"
+
+
+def news_path(user: str) -> Path:
+    return user_root(user) / "holdings-news.json"
+
+
+def read_holdings_news(user: str) -> dict[str, Any]:
+    path = news_path(user)
+    if not path.exists():
+        return {"generated_at": None, "window_hours": 48, "news": []}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("news"), list):
+        raise ValueError("invalid news state")
+    return payload
+
+
+def refresh_holdings_news(user: str) -> dict[str, Any]:
+    holdings = holdings_path(user)
+    if not holdings.exists():
+        return read_holdings_news(user)
+    target = news_path(user)
+    env = {**os.environ, "PORTFOLIO_STATE_FILE": str(holdings), "PORTFOLIO_NEWS_FILE": str(target), "PORTFOLIO_NEWS_LOCK": str(user_root(user) / "news-scan.lock")}
+    for source in ("news", "sec"):
+        subprocess.run([NEWS_SCANNER, "--source", source], env=env, check=True, timeout=180, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return read_holdings_news(user)
 
 
 def _session_secret() -> bytes:
@@ -434,6 +461,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"authenticated": True, "user": user}); return
         if self.path == "/auth/check":
             self._json(200, {"authenticated": True}); return
+        if self.path == "/holdings-news":
+            try:
+                self._json(200, read_holdings_news(user))
+            except Exception:
+                self._json(500, {"error": "news_unavailable"})
+            return
         if self.path.startswith("/state/"):
             try:
                 initialized, value = read_user_state(user, self.path.removeprefix("/state/"))
@@ -480,6 +513,12 @@ class Handler(BaseHTTPRequestHandler):
             user = self._user()
         except ValueError:
             self._json(401, {"error": "authentication_required"}); return
+        if self.path == "/holdings-news/refresh":
+            try:
+                self._json(200, refresh_holdings_news(user))
+            except (subprocess.SubprocessError, OSError, ValueError):
+                self._json(502, {"error": "news_refresh_failed"})
+            return
         if self.path not in {"/chat", "/x-digest"}:
             self._json(404, {"error": "not_found"}); return
         try:
